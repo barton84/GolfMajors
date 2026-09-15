@@ -147,6 +147,14 @@ tr.hi td { background: var(--row-hi); }
 .team table td.g { font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .bench-row td { font-size: 12.5px !important; color: var(--muted); background: var(--bg-2); }
 
+html { scroll-behavior: smooth; }
+.team { scroll-margin-top: calc(110px + env(safe-area-inset-top, 0px)); }
+.standings a.jump { color: inherit; text-decoration: none; border-bottom: 1px dashed var(--muted); }
+.standings a.jump:hover { color: var(--brand-2); border-bottom-color: currentColor; }
+.team.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent), var(--shadow); } 100% { box-shadow: var(--shadow); } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .team.flash { animation: none; outline: 3px solid var(--accent); } }
+
 /* Draft room */
 .clock { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; border-radius: 14px; background: var(--brand); color: var(--brand-ink); margin-bottom: 16px; }
 [data-theme='arena'] .clock { background: linear-gradient(90deg, #5b21b6, #7c3aed); }
