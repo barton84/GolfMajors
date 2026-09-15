@@ -74,3 +74,16 @@ test('side bet: best single backup, second backup breaks tie (Walker won 2026 U.
   assert.equal(lb.sideBet[0].manager, 'Walker');
   assert.equal(lb.sideBetTie, false);
 });
+
+test('hole-by-hole: pars derived, strokes add up to round totals, partial rounds kept', async () => {
+  const { parseHoles } = await import('../lib/espn.mjs');
+  const raw = JSON.parse(fs.readFileSync(new URL('./mock-espn-post.json', import.meta.url)));
+  const h = parseHoles(raw, '401811952');
+  assert.equal(h.pars.reduce((a, b) => a + b, 0), 70);
+  for (const g of feed.golfers.slice(0, 40)) {
+    const cards = h.players[g.espnId];
+    g.rounds.forEach((r, i) => { if (r) assert.equal(cards[i].reduce((s, x) => s + x[0], 0), r); });
+  }
+  const day = feed.golfers.find((g) => g.name === 'Jason Day');
+  assert.equal(h.players[day.espnId][0].filter(Boolean).length, 11);
+});
