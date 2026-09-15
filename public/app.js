@@ -2,7 +2,7 @@
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const app = $('#app');
-
+ 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -11,7 +11,7 @@ const store = {
 };
 const adminToken = () => store.get('adminToken');
 const isAdmin = () => !!adminToken();
-
+ 
 async function api(method, path, body) {
   const headers = { 'content-type': 'application/json' };
   if (adminToken()) headers.authorization = `Bearer ${adminToken()}`;
@@ -23,7 +23,7 @@ async function api(method, path, body) {
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
-
+ 
 let toastTimer;
 function toast(msg, ms = 2600) {
   const t = $('#toast');
@@ -44,7 +44,7 @@ function confirmBox(title, text, okLabel = 'Confirm') {
     m.onclose = () => resolve(false);
   });
 }
-
+ 
 const fmtPar = (n) => (n === null || n === undefined || Number.isNaN(n) ? '-' : n === 0 ? 'E' : n > 0 ? `+${n}` : `${n}`);
 const parCls = (n) => (typeof n === 'number' && n < 0 ? 'under' : '');
 function fmtTee(iso) {
@@ -55,7 +55,7 @@ function fmtTee(iso) {
 }
 const fmtSalary = (n) => `$${Number(n).toLocaleString('en-US')}`;
 const statusLabel = { setup: 'Setting up', drafting: 'Drafting', live: 'Live', final: 'Final' };
-
+ 
 // ---------- theme ----------
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
@@ -67,13 +67,13 @@ $('#themeToggle').onclick = () => {
   applyTheme(cur === 'golf' ? 'arena' : 'golf');
 };
 try { const t = localStorage.getItem('theme'); applyTheme(t ? JSON.parse(t) : 'golf'); } catch { applyTheme('golf'); }
-
+ 
 // ---------- routing ----------
 let index = { currentId: null, drafts: [] };
 let timers = [];
 const clearTimers = () => { timers.forEach(clearInterval); timers = []; };
 const every = (fn, ms) => timers.push(setInterval(fn, ms));
-
+ 
 async function loadIndex() {
   index = await api('GET', '/drafts').catch(() => ({ currentId: null, drafts: [] }));
   const p = $('#draftPicker');
@@ -82,7 +82,7 @@ async function loadIndex() {
     : '<option value="">No tournaments yet</option>';
 }
 $('#draftPicker').onchange = (e) => { if (e.target.value) location.hash = `#/d/${e.target.value}`; };
-
+ 
 function setTabs(draft, active) {
   const t = $('#tabs');
   const links = [];
@@ -98,7 +98,7 @@ function setTabs(draft, active) {
   t.innerHTML = links.map(([k, href, label]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('');
   if (draft) $('#draftPicker').value = draft.id;
 }
-
+ 
 async function route() {
   clearTimers();
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -142,7 +142,7 @@ async function currentDraftStub() {
   return index.drafts.find((d) => d.id === sel) || null;
 }
 window.addEventListener('hashchange', route);
-
+ 
 function renderEmpty() {
   setTabs(null, '');
   app.innerHTML = `<div class="card pad" style="text-align:center;padding:48px 16px">
@@ -150,14 +150,14 @@ function renderEmpty() {
     <p class="muted">The admin can create the first draft.</p>
     <a class="btn primary" href="#/admin">Go to Admin</a></div>`;
 }
-
+ 
 // ---------- draft room ----------
 function me(draft) {
   const s = store.get(`me:${draft.id}`);
   return s && draft.managers.some((m) => m.id === s.managerId) ? s : null;
 }
 const mgrName = (draft, id) => draft.managers.find((m) => m.id === id)?.name || '?';
-
+ 
 function renderDraftRoom(draft) {
   let state = draft;
   let search = '';
@@ -179,11 +179,11 @@ function renderDraftRoom(draft) {
       </section>
       <section class="card board-pane"><div class="table-wrap" id="board"></div></section>
     </div>`;
-
+ 
   $$('.mobile-tabs .btn').forEach((b) => (b.onclick = () => { show = b.dataset.show; $('.draft-layout').dataset.show = show; }));
   $('#search').oninput = (e) => { search = e.target.value.toLowerCase(); drawPlayers(); };
   $('#hideTaken').onchange = drawPlayers;
-
+ 
   function drawWho() {
     const m = me(state);
     $('#whoami').innerHTML = m
@@ -249,7 +249,7 @@ function renderDraftRoom(draft) {
     $('#board').innerHTML = html + '</tbody></table>';
   }
   function drawAll() { drawWho(); drawClock(); drawPlayers(); drawBoard(); }
-
+ 
   async function pick(key) {
     const g = state.field.find((x) => x.key === key);
     const c = state.onClock;
@@ -263,7 +263,7 @@ function renderDraftRoom(draft) {
       drawAll();
     });
   }
-
+ 
   drawAll();
   let lastSig = '';
   every(async () => {
@@ -274,7 +274,7 @@ function renderDraftRoom(draft) {
     } catch {}
   }, 2500);
 }
-
+ 
 async function identify(draft) {
   const m = $('#modal');
   m.innerHTML = `<h3>Who are you?</h3>
@@ -300,7 +300,7 @@ async function identify(draft) {
     };
   });
 }
-
+ 
 // ---------- leaderboard ----------
 function roundCell(g, i) {
   const v = g.scoredRounds?.[i];
@@ -320,7 +320,7 @@ function golferRow(g, extraCls = '') {
     ${[0, 1, 2, 3].map((i) => roundCell(g, i)).join('')}
     <td class="num"><b>${g.strokes || '-'}</b></td></tr>`;
 }
-
+ 
 function renderLeaderboard(draft) {
   app.innerHTML = `<div class="hero"><div><h1>${esc(draft.name)}</h1><div class="meta" id="lbMeta"></div></div>
     <div class="row">${isAdmin() && draft.status !== 'final' ? '<button class="btn sm" id="refresh">Refresh from ESPN</button>' : ''}</div></div>
@@ -335,13 +335,13 @@ function renderLeaderboard(draft) {
       ${lb.fetchedAt ? `<span class="tiny muted">Updated ${new Date(lb.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}`;
     $('#lbErr').innerHTML = lb.error ? `<div class="notice bad" style="margin-bottom:12px">${esc(lb.error)}</div>` : '';
     if (!draft.picks.length) { $('#lb').outerHTML = '<div id="lb" class="card pad muted">No picks yet. Scores show up here after the draft.</div>'; return; }
-    const tiedTop = lb.teams.filter((t) => t.tiedOnScore && t.rank <= 3);
+    const started = lb.final || (state && state !== 'pre');
     const standings = `<div class="card"><div class="table-wrap"><table class="standings">
       <thead><tr><th>Pos</th><th>Manager</th><th class="num">To par</th><th class="num">Strokes</th><th class="num hide-sm">Pick</th></tr></thead><tbody>
-      ${lb.teams.map((t) => `<tr class="${t.rank === 1 ? 'first' : ''}"><td class="rank">${t.rank}</td><td class="mgr"><a href="#" class="jump" data-team="${esc(t.managerId)}">${esc(t.manager)}</a>${t.tiedOnScore ? ` <span class="tiny muted" title="Tiebreak: top 2, 4, 6, 8 golfers">TB ${t.tiebreak.map(fmtPar).join(' / ')}</span>` : ''}</td>
+      ${lb.teams.map((t) => `<tr class="${t.rank === 1 ? 'first' : ''}"><td class="rank">${t.rank}</td><td class="mgr"><a href="#" class="jump" data-team="${esc(t.managerId)}">${esc(t.manager)}</a>${t.tiedOnScore && started ? ` <button type="button" class="tb-chip" data-tb="${esc(t.managerId)}">Tiebreaker</button>` : ''}</td>
         <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td><td class="num">${t.strokesComplete ? t.strokes : '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
       </tbody></table></div></div>
-      ${tiedTop.length ? '<p class="tiny muted">TB = tiebreaker totals for the top 2, 4, 6 and 8 golfers.</p>' : ''}`;
+`;
     const cards = lb.teams.map((t) => `<article class="card team" id="team-${esc(t.managerId)}">
       <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${esc(t.manager)}</h3><div class="tiny muted">${t.strokesComplete ? `${t.strokes} strokes` : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
       <div class="tot ${parCls(t.toPar)}">${esc(t.toParDisplay)}</div></div>
@@ -350,6 +350,7 @@ function renderLeaderboard(draft) {
       ${t.bench.filter((b) => !b.usedAsSub).map((g) => golferRow({ ...g, pos: `R${g.round}` }, 'bench-row')).join('')}</tbody></table></div>
     </article>`).join('');
     $('#lb').outerHTML = `<div id="lb">${standings}<p class="tiny muted" style="margin:10px 2px 0">Faded rows don't count toward the team score. Gray rows are unused backups. <span class="pen">80</span> = missed round penalty.</p><div class="teams">${cards}</div></div>`;
+    $$('#lb .tb-chip').forEach((b) => (b.onclick = () => showTiebreak(lb, b.dataset.tb)));
     $$('#lb .jump').forEach((a) => (a.onclick = (e) => {
       e.preventDefault();
       const card = document.getElementById(`team-${a.dataset.team}`);
@@ -364,7 +365,28 @@ function renderLeaderboard(draft) {
   if ($('#refresh')) $('#refresh').onclick = () => guard(async () => { await draw(true); toast('Scores refreshed'); });
   if (draft.status !== 'final') every(() => draw().catch(() => {}), 60_000);
 }
-
+ 
+function showTiebreak(lb, managerId) {
+  const me = lb.teams.find((t) => t.managerId === managerId);
+  if (!me) return;
+  const group = lb.teams.filter((t) => t.toPar === me.toPar);
+  const labels = ['Best 2', 'Best 4', 'Best 6', 'All 8'];
+  // First column where the tied teams differ decides it
+  const decider = labels.findIndex((_, i) => new Set(group.map((t) => t.tiebreak[i])).size > 1);
+  const best = decider >= 0 ? Math.min(...group.map((t) => t.tiebreak[decider])) : null;
+  const m = $('#modal');
+  m.innerHTML = `<h3>Tiebreaker at ${esc(fmtPar(me.toPar))}</h3>
+    <p class="small muted">Tied teams are compared by their best 2 golfers first, then best 4, 6, and all 8. The first column that's different decides it.</p>
+    <div class="table-wrap"><table class="tb-table"><thead><tr><th>Manager</th>${labels.map((l, i) => `<th class="c ${i === decider ? 'decider' : ''}">${l}</th>`).join('')}</tr></thead>
+    <tbody>${group.map((t) => `<tr class="${t.managerId === managerId ? 'hi' : ''}"><td><b>${esc(t.manager)}</b> <span class="tiny muted">${ordinal(t.rank)}</span></td>${t.tiebreak.map((v, i) => `<td class="c ${i === decider ? 'decider' : ''} ${i === decider && v === best ? 'win' : ''}">${esc(fmtPar(v))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <p class="small" style="margin-top:12px">${decider >= 0 ? `Decided by the <b>${labels[decider].toLowerCase()}</b> golfers.` : 'Still tied on every tiebreaker. Per the rules, tied teams split the payout.'}${lb.final ? '' : ' <span class="muted">This can change as scores come in.</span>'}</p>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" value="close">Close</button></div>`;
+  m.showModal();
+  $('button', m).onclick = () => m.close();
+  m.onclick = (e) => { if (e.target === m) m.close(); };
+}
+const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+ 
 function renderSideBet(draft) {
   app.innerHTML = `<div class="hero"><div><h1>Side Bet</h1><div class="meta">
     <span class="pill">Best single backup golfer wins</span>
@@ -386,7 +408,7 @@ function renderSideBet(draft) {
   guard(draw);
   if (draft.status !== 'final') every(() => draw().catch(() => {}), 60_000);
 }
-
+ 
 function renderRules(draft) {
   const s = draft.settings;
   const pay = (draft.payouts || []).filter((p) => p.place || p.prize);
@@ -414,7 +436,7 @@ function renderRules(draft) {
     ${draft.sideBet?.entry || draft.sideBet?.payout ? `<section><h2>Side Bet</h2><ul><li>Entry: ${esc(draft.sideBet.entry || '-')}. Payout: ${esc(draft.sideBet.payout || '-')}.</li><li>The manager whose single best backup golfer (rounds ${s.starters + 1} to ${s.rounds}) has the lowest score wins.</li><li>Ties go to the better second backup.</li></ul></section>` : ''}
   </div>`;
 }
-
+ 
 // ---------- history ----------
 async function renderHistory() {
   const [{ winners }] = await Promise.all([api('GET', '/history'), loadIndex()]);
@@ -430,7 +452,7 @@ async function renderHistory() {
     </tbody></table></div></div>
     ${archived.length ? `<h2 style="margin-top:24px">Tournaments in the app</h2><div class="card"><div class="table-wrap"><table><tbody>${archived.map((d) => `<tr><td><a href="#/d/${esc(d.id)}/leaderboard">${esc(d.name)}</a></td><td class="num"><a class="btn sm" href="#/d/${esc(d.id)}/draft">Draft board</a></td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
 }
-
+ 
 // ---------- admin ----------
 function renderLogin() {
   app.innerHTML = `<div class="card pad" style="max-width:380px;margin:40px auto">
@@ -445,7 +467,7 @@ function renderLogin() {
     });
   };
 }
-
+ 
 async function renderAdminHome() {
   await loadIndex();
   app.innerHTML = `<div class="hero"><div><h1>Admin</h1></div><div class="row"><a class="btn" href="#/admin/winners">Edit past winners</a><a class="btn primary" href="#/admin/new">Create a new draft</a><button class="btn sm" id="logout">Log out</button></div></div>
@@ -457,14 +479,14 @@ async function renderAdminHome() {
   $('#logout').onclick = () => { store.del('adminToken'); route(); };
   $$('[data-current]').forEach((b) => (b.onclick = () => guard(async () => { await api('POST', '/admin/current', { id: b.dataset.current }); renderAdminHome(); })));
 }
-
+ 
 function managerRows(list) {
   return list.map((m, i) => `<div class="mgr-row" data-i="${i}">
     <input name="mname" placeholder="Manager ${i + 1}" value="${esc(m.name || '')}" />
     <input name="mpin" placeholder="${m.hasPin ? 'PIN set' : 'PIN'}" inputmode="numeric" maxlength="8" value="" />
     <button type="button" class="btn sm danger" data-rm="${i}" title="Remove">&times;</button></div>`).join('');
 }
-
+ 
 async function renderCreate() {
   const meta = await api('GET', '/meta');
   const year = new Date().getFullYear();
@@ -534,12 +556,12 @@ async function renderCreate() {
     });
   };
 }
-
+ 
 async function renderManage(id) {
   let d = await api('GET', `/admin/draft/${id}`);
   const refresh = async () => { d = await api('GET', `/admin/draft/${id}`); draw(); };
   const act = (path, body, msg) => guard(async () => { d = await api('POST', `/admin/draft/${id}/${path}`, body); if (msg) toast(msg); draw(); });
-
+ 
   function draw() {
     const locked = d.picks.length > 0;
     const pickedNames = [...new Set(d.picks.map((p) => p.name))].sort();
@@ -570,7 +592,7 @@ async function renderManage(id) {
       : '';
     app.innerHTML = `<div class="hero"><div><h1>${esc(d.name)}</h1><div class="meta"><span class="pill ${d.status === 'drafting' ? 'live' : ''}">${statusLabel[d.status]}</span><span class="pill">${d.picks.length}/${d.totalPicks} picks</span><span class="pill">${d.field.length} golfers in field</span></div></div>
       <div class="row"><a class="btn" href="#/d/${esc(id)}/draft">Draft room</a><a class="btn" href="#/d/${esc(id)}/leaderboard">Leaderboard</a><a class="btn sm" href="#/admin">All drafts</a></div></div>
-
+ 
     <div class="admin-grid">
       <section class="card pad stack"><h2>1. Steps</h2>
         <ol class="small" style="padding-left:1.2em;margin:0">
@@ -586,18 +608,18 @@ async function renderManage(id) {
           <button class="btn accent" id="finalize">${d.status === 'final' ? 'Re-finalize with latest scores' : 'Finalize tournament'}</button></div>` : ''}
         <button class="btn sm danger" id="del">Delete this draft</button>
       </section>
-
+ 
       <section class="card pad stack"><h2>2. Managers and PINs</h2>
         <p class="tiny muted">Leave PIN blank to keep the current one.${locked ? ' Managers cannot be added or removed after picks are made.' : ''}</p>
         <div id="mgrs" class="stack">${managerRows(d.managers)}</div>
         <div class="row">${locked ? '' : '<button class="btn sm" id="addMgr">Add manager</button>'}<button class="btn sm primary" id="saveMgrs">Save managers</button></div>
       </section>
-
+ 
       <section class="card pad stack"><h2>3. Draft order</h2>
         <ul class="order-list">${d.order.map((mid, i) => `<li><span class="n">${i + 1}</span><span class="grow">${esc(mgrName(d, mid))}</span>${locked ? '' : `<button class="btn sm" data-up="${i}" ${i ? '' : 'disabled'}>&uarr;</button><button class="btn sm" data-down="${i}" ${i < d.order.length - 1 ? '' : 'disabled'}>&darr;</button>`}</li>`).join('')}</ul>
         ${locked ? '<p class="tiny muted">Locked because picks have been made.</p>' : '<button class="btn primary" id="rand">Randomize order</button>'}
       </section>
-
+ 
       <section class="card pad stack field-card"><h2>4. Field</h2>
         ${fieldWarning}
         <div class="src-grid">
@@ -606,11 +628,11 @@ async function renderManage(id) {
           <div class="src ${d.sources?.paste ? 'on' : ''}"><b>Pasted</b><span>${d.sources?.paste ? `${d.sources.paste} names` : 'None'}</span></div>
         </div>
         <p class="tiny muted">Draft list: ${d.field.length} golfers from ${({ espn: 'ESPN', dk: 'DraftKings', paste: 'pasted names', none: 'nothing yet' })[d.fieldSource || (d.field.length ? 'espn' : 'none')]}${d.dkStatus ? ', sorted by DraftKings salary' : ''}. Scores always come from ESPN.</p>
-
+ 
         <h3>ESPN (field, tee times, scoring)</h3>
         <label class="field">ESPN leaderboard link or tournament ID<input id="eventInput" value="${esc(d.eventInput || '')}" placeholder="https://www.espn.com/golf/leaderboard/_/tournamentId/..." /></label>
         <div class="row"><button class="btn sm" id="saveLink">Save link</button><button class="btn primary sm" id="loadEspn">${d.fieldSource === 'dk' || d.fieldSource === 'paste' ? 'Link to ESPN' : d.sources?.espn ? 'Refresh from ESPN' : 'Load field from ESPN'}</button></div>
-
+ 
         <h3>DraftKings salaries (sort order)</h3>
         ${d.dkStatus ? `<div class="row small"><span class="grow">${esc(d.dkStatus.fileName)} <span class="muted">uploaded ${new Date(d.dkStatus.uploadedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></span><button class="btn sm danger" id="dkClear">Remove</button></div>` : ''}
         <label class="btn sm ${d.dkStatus ? '' : 'primary'} file-btn">${d.dkStatus ? 'Upload a new file' : 'Upload DraftKings salary CSV'}<input type="file" id="dkFile" accept=".csv,text/csv" hidden /></label>
@@ -619,7 +641,7 @@ async function renderManage(id) {
         ${unmatchedHtml}
         ${autoHtml}
         ${linkHtml}
-
+ 
         <details><summary class="small">Paste names instead (one per line)</summary>
           <textarea id="names" rows="6" style="width:100%;margin-top:8px" placeholder="Scottie Scheffler&#10;Rory McIlroy"></textarea>
           <div class="row"><button class="btn sm" id="pasteReplace">Replace pasted list</button><button class="btn sm" id="pasteAppend">Add to pasted list</button>${d.sources?.paste ? '<button class="btn sm danger" id="pasteClear">Clear pasted list</button>' : ''}</div>
@@ -627,7 +649,7 @@ async function renderManage(id) {
         <details id="aliasBox"><summary class="small">Saved name pairings</summary><div id="aliasList" class="small muted" style="margin-top:8px">Loading...</div></details>
         <p class="tiny muted">${d.fieldLoadedAt ? `Last changed ${new Date(d.fieldLoadedAt).toLocaleString()}.` : ''} Drafted golfers are always kept.</p>
       </section>
-
+ 
       <section class="card pad stack"><h2>Fix a golfer's score</h2>
         <p class="tiny muted">Only needed if ESPN is wrong or late. Example: a withdrawal before the first tee shot that ESPN hasn't posted yet.</p>
         <form id="ovForm" class="stack">
@@ -639,7 +661,7 @@ async function renderManage(id) {
         </form>
         ${Object.keys(ov).length ? `<div class="table-wrap"><table><tbody>${Object.entries(ov).map(([k, o]) => { const nm = d.picks.find((p) => p.key === k)?.name || k; return `<tr><td>${esc(nm)}</td><td class="small">${[o.status && o.status.toUpperCase(), o.started === false ? 'not started' : o.started ? 'started' : '', (o.rounds || []).some((x) => x) ? `rounds ${(o.rounds || []).map((x) => x || '-').join('/')}` : ''].filter(Boolean).join(', ')}</td><td class="num"><button class="btn sm" data-clear="${esc(nm)}">Clear</button></td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </section>
-
+ 
       <section class="card pad stack"><h2>Details</h2>
         <form id="details" class="stack">
           <div class="grid-form"><label class="field">Name<input name="name" value="${esc(d.name)}" /></label><label class="field">Year<input name="year" type="number" value="${esc(d.year)}" /></label><label class="field">Entry fee<input name="entryFee" value="${esc(d.entryFee || '')}" /></label></div>
@@ -652,7 +674,7 @@ async function renderManage(id) {
     </div>`;
     bind();
   }
-
+ 
   function bind() {
     const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = fn; };
     on('#start', () => act('status', { status: 'drafting' }, 'Draft is open'));
@@ -749,7 +771,7 @@ async function renderManage(id) {
   draw();
   loadIndex();
 }
-
+ 
 async function renderWinnersEditor() {
   let { winners } = await api('GET', '/history');
   const cols = [['year', 'Year', 70], ['tournament', 'Tournament', 160], ['winner', 'Winner', 110], ['winnerDraftPos', 'Pos', 60], ['runnerUp', 'Runner-up', 110], ['runnerUpDraftPos', 'Pos', 60], ['sideBet', 'Side bet', 110]];
@@ -765,5 +787,5 @@ async function renderWinnersEditor() {
   };
   draw();
 }
-
+ 
 route();
