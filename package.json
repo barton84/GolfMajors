@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node dev/server.mjs",
-    "test": "node --test test/scoring.test.mjs"
+    "test": "node --test test/scoring.test.mjs test/dk.test.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.0"

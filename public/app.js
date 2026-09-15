@@ -2,7 +2,7 @@
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const app = $('#app');
- 
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -11,7 +11,7 @@ const store = {
 };
 const adminToken = () => store.get('adminToken');
 const isAdmin = () => !!adminToken();
- 
+
 async function api(method, path, body) {
   const headers = { 'content-type': 'application/json' };
   if (adminToken()) headers.authorization = `Bearer ${adminToken()}`;
@@ -23,7 +23,7 @@ async function api(method, path, body) {
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
- 
+
 let toastTimer;
 function toast(msg, ms = 2600) {
   const t = $('#toast');
@@ -44,7 +44,7 @@ function confirmBox(title, text, okLabel = 'Confirm') {
     m.onclose = () => resolve(false);
   });
 }
- 
+
 const fmtPar = (n) => (n === null || n === undefined || Number.isNaN(n) ? '-' : n === 0 ? 'E' : n > 0 ? `+${n}` : `${n}`);
 const parCls = (n) => (typeof n === 'number' && n < 0 ? 'under' : '');
 function fmtTee(iso) {
@@ -53,8 +53,9 @@ function fmtTee(iso) {
   if (Number.isNaN(d.getTime())) return String(iso);
   return d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
+const fmtSalary = (n) => `$${Number(n).toLocaleString('en-US')}`;
 const statusLabel = { setup: 'Setting up', drafting: 'Drafting', live: 'Live', final: 'Final' };
- 
+
 // ---------- theme ----------
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
@@ -66,13 +67,13 @@ $('#themeToggle').onclick = () => {
   applyTheme(cur === 'golf' ? 'arena' : 'golf');
 };
 try { const t = localStorage.getItem('theme'); applyTheme(t ? JSON.parse(t) : 'golf'); } catch { applyTheme('golf'); }
- 
+
 // ---------- routing ----------
 let index = { currentId: null, drafts: [] };
 let timers = [];
 const clearTimers = () => { timers.forEach(clearInterval); timers = []; };
 const every = (fn, ms) => timers.push(setInterval(fn, ms));
- 
+
 async function loadIndex() {
   index = await api('GET', '/drafts').catch(() => ({ currentId: null, drafts: [] }));
   const p = $('#draftPicker');
@@ -81,7 +82,7 @@ async function loadIndex() {
     : '<option value="">No tournaments yet</option>';
 }
 $('#draftPicker').onchange = (e) => { if (e.target.value) location.hash = `#/d/${e.target.value}`; };
- 
+
 function setTabs(draft, active) {
   const t = $('#tabs');
   const links = [];
@@ -97,7 +98,7 @@ function setTabs(draft, active) {
   t.innerHTML = links.map(([k, href, label]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('');
   if (draft) $('#draftPicker').value = draft.id;
 }
- 
+
 async function route() {
   clearTimers();
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -141,7 +142,7 @@ async function currentDraftStub() {
   return index.drafts.find((d) => d.id === sel) || null;
 }
 window.addEventListener('hashchange', route);
- 
+
 function renderEmpty() {
   setTabs(null, '');
   app.innerHTML = `<div class="card pad" style="text-align:center;padding:48px 16px">
@@ -149,14 +150,14 @@ function renderEmpty() {
     <p class="muted">The admin can create the first draft.</p>
     <a class="btn primary" href="#/admin">Go to Admin</a></div>`;
 }
- 
+
 // ---------- draft room ----------
 function me(draft) {
   const s = store.get(`me:${draft.id}`);
   return s && draft.managers.some((m) => m.id === s.managerId) ? s : null;
 }
 const mgrName = (draft, id) => draft.managers.find((m) => m.id === id)?.name || '?';
- 
+
 function renderDraftRoom(draft) {
   let state = draft;
   let search = '';
@@ -178,11 +179,11 @@ function renderDraftRoom(draft) {
       </section>
       <section class="card board-pane"><div class="table-wrap" id="board"></div></section>
     </div>`;
- 
+
   $$('.mobile-tabs .btn').forEach((b) => (b.onclick = () => { show = b.dataset.show; $('.draft-layout').dataset.show = show; }));
   $('#search').oninput = (e) => { search = e.target.value.toLowerCase(); drawPlayers(); };
   $('#hideTaken').onchange = drawPlayers;
- 
+
   function drawWho() {
     const m = me(state);
     $('#whoami').innerHTML = m
@@ -221,6 +222,7 @@ function renderDraftRoom(draft) {
           const t = taken.get(g.key);
           return `<div class="player">
             <span class="nm">${esc(g.name)}${g.teeTime ? `<div class="tiny muted">${esc(fmtTee(g.teeTime))}</div>` : ''}</span>
+            ${state.showSalaries !== false && g.salary ? `<span class="sal">${fmtSalary(g.salary)}</span>` : ''}
             ${t ? `<span class="tiny muted">${esc(mgrName(state, t.managerId))} R${t.round}</span>` : `<button class="btn sm ${canPick ? 'primary' : ''}" data-pick="${esc(g.key)}" ${canPick ? '' : 'disabled'}>Draft</button>`}
           </div>`;
         }).join('')
@@ -247,7 +249,7 @@ function renderDraftRoom(draft) {
     $('#board').innerHTML = html + '</tbody></table>';
   }
   function drawAll() { drawWho(); drawClock(); drawPlayers(); drawBoard(); }
- 
+
   async function pick(key) {
     const g = state.field.find((x) => x.key === key);
     const c = state.onClock;
@@ -261,7 +263,7 @@ function renderDraftRoom(draft) {
       drawAll();
     });
   }
- 
+
   drawAll();
   let lastSig = '';
   every(async () => {
@@ -272,7 +274,7 @@ function renderDraftRoom(draft) {
     } catch {}
   }, 2500);
 }
- 
+
 async function identify(draft) {
   const m = $('#modal');
   m.innerHTML = `<h3>Who are you?</h3>
@@ -298,7 +300,7 @@ async function identify(draft) {
     };
   });
 }
- 
+
 // ---------- leaderboard ----------
 function roundCell(g, i) {
   const v = g.scoredRounds?.[i];
@@ -318,7 +320,7 @@ function golferRow(g, extraCls = '') {
     ${[0, 1, 2, 3].map((i) => roundCell(g, i)).join('')}
     <td class="num"><b>${g.strokes || '-'}</b></td></tr>`;
 }
- 
+
 function renderLeaderboard(draft) {
   app.innerHTML = `<div class="hero"><div><h1>${esc(draft.name)}</h1><div class="meta" id="lbMeta"></div></div>
     <div class="row">${isAdmin() && draft.status !== 'final' ? '<button class="btn sm" id="refresh">Refresh from ESPN</button>' : ''}</div></div>
@@ -362,7 +364,7 @@ function renderLeaderboard(draft) {
   if ($('#refresh')) $('#refresh').onclick = () => guard(async () => { await draw(true); toast('Scores refreshed'); });
   if (draft.status !== 'final') every(() => draw().catch(() => {}), 60_000);
 }
- 
+
 function renderSideBet(draft) {
   app.innerHTML = `<div class="hero"><div><h1>Side Bet</h1><div class="meta">
     <span class="pill">Best single backup golfer wins</span>
@@ -384,7 +386,7 @@ function renderSideBet(draft) {
   guard(draw);
   if (draft.status !== 'final') every(() => draw().catch(() => {}), 60_000);
 }
- 
+
 function renderRules(draft) {
   const s = draft.settings;
   const pay = (draft.payouts || []).filter((p) => p.place || p.prize);
@@ -412,7 +414,7 @@ function renderRules(draft) {
     ${draft.sideBet?.entry || draft.sideBet?.payout ? `<section><h2>Side Bet</h2><ul><li>Entry: ${esc(draft.sideBet.entry || '-')}. Payout: ${esc(draft.sideBet.payout || '-')}.</li><li>The manager whose single best backup golfer (rounds ${s.starters + 1} to ${s.rounds}) has the lowest score wins.</li><li>Ties go to the better second backup.</li></ul></section>` : ''}
   </div>`;
 }
- 
+
 // ---------- history ----------
 async function renderHistory() {
   const [{ winners }] = await Promise.all([api('GET', '/history'), loadIndex()]);
@@ -428,7 +430,7 @@ async function renderHistory() {
     </tbody></table></div></div>
     ${archived.length ? `<h2 style="margin-top:24px">Tournaments in the app</h2><div class="card"><div class="table-wrap"><table><tbody>${archived.map((d) => `<tr><td><a href="#/d/${esc(d.id)}/leaderboard">${esc(d.name)}</a></td><td class="num"><a class="btn sm" href="#/d/${esc(d.id)}/draft">Draft board</a></td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
 }
- 
+
 // ---------- admin ----------
 function renderLogin() {
   app.innerHTML = `<div class="card pad" style="max-width:380px;margin:40px auto">
@@ -443,7 +445,7 @@ function renderLogin() {
     });
   };
 }
- 
+
 async function renderAdminHome() {
   await loadIndex();
   app.innerHTML = `<div class="hero"><div><h1>Admin</h1></div><div class="row"><a class="btn" href="#/admin/winners">Edit past winners</a><a class="btn primary" href="#/admin/new">Create a new draft</a><button class="btn sm" id="logout">Log out</button></div></div>
@@ -455,14 +457,14 @@ async function renderAdminHome() {
   $('#logout').onclick = () => { store.del('adminToken'); route(); };
   $$('[data-current]').forEach((b) => (b.onclick = () => guard(async () => { await api('POST', '/admin/current', { id: b.dataset.current }); renderAdminHome(); })));
 }
- 
+
 function managerRows(list) {
   return list.map((m, i) => `<div class="mgr-row" data-i="${i}">
     <input name="mname" placeholder="Manager ${i + 1}" value="${esc(m.name || '')}" />
     <input name="mpin" placeholder="${m.hasPin ? 'PIN set' : 'PIN'}" inputmode="numeric" maxlength="8" value="" />
     <button type="button" class="btn sm danger" data-rm="${i}" title="Remove">&times;</button></div>`).join('');
 }
- 
+
 async function renderCreate() {
   const meta = await api('GET', '/meta');
   const year = new Date().getFullYear();
@@ -532,19 +534,43 @@ async function renderCreate() {
     });
   };
 }
- 
+
 async function renderManage(id) {
   let d = await api('GET', `/admin/draft/${id}`);
   const refresh = async () => { d = await api('GET', `/admin/draft/${id}`); draw(); };
   const act = (path, body, msg) => guard(async () => { d = await api('POST', `/admin/draft/${id}/${path}`, body); if (msg) toast(msg); draw(); });
- 
+
   function draw() {
     const locked = d.picks.length > 0;
     const pickedNames = [...new Set(d.picks.map((p) => p.name))].sort();
     const ov = d.overrides || {};
+    const noSalary = d.field.filter((f) => !f.salary);
+    const pairSelect = (item, pool) => {
+      const sugg = item.suggestions || [];
+      const rest = pool.filter((f) => !sugg.some((x) => x.key === f.key)).sort((x, y) => x.name.localeCompare(y.name));
+      return `<select class="pairSel"><option value="">Choose golfer...</option>${sugg.length ? `<optgroup label="Closest matches">${sugg.map((x) => `<option value="${esc(x.key)}">${esc(x.name)}</option>`).join('')}</optgroup>` : ''}<optgroup label="Everyone else">${rest.map((x) => `<option value="${esc(x.key)}">${esc(x.name)}</option>`).join('')}</optgroup></select>`;
+    };
+    const unmatched = d.dkStatus?.unmatched || [];
+    const unmatchedHtml = unmatched.length && d.fieldSource !== 'dk'
+      ? `<div class="pair-box"><div class="small"><b>${unmatched.length} DraftKings name${unmatched.length === 1 ? '' : 's'} didn't match.</b> Pick the golfer for each, or mark as not in the field. Pairings are remembered for future tournaments.</div>
+        ${unmatched.map((u) => `<div class="pair-row" data-from="${esc(u.name)}"><div><b>${esc(u.name)}</b> <span class="muted tiny">${fmtSalary(u.salary)}</span></div>${pairSelect(u, noSalary)}<div class="row" style="gap:6px"><button class="btn sm primary" data-act="pair">Pair</button><button class="btn sm" data-act="ignore">Not in field</button></div></div>`).join('')}</div>`
+      : '';
+    const autos = d.field.filter((f) => f.dkName);
+    const autoHtml = autos.length
+      ? `<details><summary class="small">${autos.length} name${autos.length === 1 ? ' was' : 's were'} matched automatically. Check ${autos.length === 1 ? 'it' : 'them'}</summary><div class="table-wrap"><table class="small"><thead><tr><th>DraftKings</th><th>ESPN</th><th class="num">Salary</th></tr></thead><tbody>${autos.map((f) => `<tr><td>${esc(f.dkName)}</td><td>${esc(f.name)}</td><td class="num">${fmtSalary(f.salary)}</td></tr>`).join('')}</tbody></table></div></details>`
+      : '';
+    const issues = d.linkIssues || [];
+    const espnPool = d.field.filter((f) => f.espnId && !d.picks.some((p) => p.key === f.key));
+    const linkHtml = issues.length
+      ? `<div class="pair-box bad"><div class="small"><b>${issues.length} drafted golfer${issues.length === 1 ? '' : 's'} not found on ESPN.</b> They won't score until paired.</div>
+        ${issues.map((u) => `<div class="pair-row" data-from="${esc(u.name)}"><div><b>${esc(u.name)}</b> <span class="muted tiny">pick #${u.n}</span></div>${pairSelect(u, espnPool)}<div class="row" style="gap:6px"><button class="btn sm primary" data-act="pair">Pair</button></div></div>`).join('')}</div>`
+      : '';
+    const fieldWarning = (d.status === 'drafting' || d.status === 'live') && d.fieldSource !== 'espn'
+      ? `<div class="notice bad">Scores come from ESPN, and this draft isn't linked yet. Add the ESPN link and click <b>Link to ESPN</b> before the first tee time.</div>`
+      : '';
     app.innerHTML = `<div class="hero"><div><h1>${esc(d.name)}</h1><div class="meta"><span class="pill ${d.status === 'drafting' ? 'live' : ''}">${statusLabel[d.status]}</span><span class="pill">${d.picks.length}/${d.totalPicks} picks</span><span class="pill">${d.field.length} golfers in field</span></div></div>
       <div class="row"><a class="btn" href="#/d/${esc(id)}/draft">Draft room</a><a class="btn" href="#/d/${esc(id)}/leaderboard">Leaderboard</a><a class="btn sm" href="#/admin">All drafts</a></div></div>
- 
+
     <div class="admin-grid">
       <section class="card pad stack"><h2>1. Steps</h2>
         <ol class="small" style="padding-left:1.2em;margin:0">
@@ -560,27 +586,48 @@ async function renderManage(id) {
           <button class="btn accent" id="finalize">${d.status === 'final' ? 'Re-finalize with latest scores' : 'Finalize tournament'}</button></div>` : ''}
         <button class="btn sm danger" id="del">Delete this draft</button>
       </section>
- 
+
       <section class="card pad stack"><h2>2. Managers and PINs</h2>
         <p class="tiny muted">Leave PIN blank to keep the current one.${locked ? ' Managers cannot be added or removed after picks are made.' : ''}</p>
         <div id="mgrs" class="stack">${managerRows(d.managers)}</div>
         <div class="row">${locked ? '' : '<button class="btn sm" id="addMgr">Add manager</button>'}<button class="btn sm primary" id="saveMgrs">Save managers</button></div>
       </section>
- 
+
       <section class="card pad stack"><h2>3. Draft order</h2>
         <ul class="order-list">${d.order.map((mid, i) => `<li><span class="n">${i + 1}</span><span class="grow">${esc(mgrName(d, mid))}</span>${locked ? '' : `<button class="btn sm" data-up="${i}" ${i ? '' : 'disabled'}>&uarr;</button><button class="btn sm" data-down="${i}" ${i < d.order.length - 1 ? '' : 'disabled'}>&darr;</button>`}</li>`).join('')}</ul>
         ${locked ? '<p class="tiny muted">Locked because picks have been made.</p>' : '<button class="btn primary" id="rand">Randomize order</button>'}
       </section>
- 
-      <section class="card pad stack"><h2>4. Field</h2>
-        <label class="field">ESPN leaderboard link<input id="eventInput" value="${esc(d.eventInput || '')}" placeholder="https://www.espn.com/golf/leaderboard/_/tournamentId/..." /></label>
-        <div class="row"><button class="btn sm" id="saveLink">Save link</button><button class="btn primary sm" id="loadEspn">Load field from ESPN</button></div>
-        <details><summary class="small">Or paste names (one per line)</summary>
+
+      <section class="card pad stack field-card"><h2>4. Field</h2>
+        ${fieldWarning}
+        <div class="src-grid">
+          <div class="src ${d.sources?.espn ? 'on' : ''}"><b>ESPN</b><span>${d.sources?.espn ? `${d.sources.espn} golfers` : 'Not loaded'}</span></div>
+          <div class="src ${d.dkStatus ? 'on' : ''}"><b>DraftKings</b><span>${d.dkStatus ? `${d.dkStatus.matched} of ${d.dkStatus.total} matched${d.dkStatus.ignoredCount ? `, ${d.dkStatus.ignoredCount} not in field` : ''}` : 'No file'}</span></div>
+          <div class="src ${d.sources?.paste ? 'on' : ''}"><b>Pasted</b><span>${d.sources?.paste ? `${d.sources.paste} names` : 'None'}</span></div>
+        </div>
+        <p class="tiny muted">Draft list: ${d.field.length} golfers from ${({ espn: 'ESPN', dk: 'DraftKings', paste: 'pasted names', none: 'nothing yet' })[d.fieldSource || (d.field.length ? 'espn' : 'none')]}${d.dkStatus ? ', sorted by DraftKings salary' : ''}. Scores always come from ESPN.</p>
+
+        <h3>ESPN (field, tee times, scoring)</h3>
+        <label class="field">ESPN leaderboard link or tournament ID<input id="eventInput" value="${esc(d.eventInput || '')}" placeholder="https://www.espn.com/golf/leaderboard/_/tournamentId/..." /></label>
+        <div class="row"><button class="btn sm" id="saveLink">Save link</button><button class="btn primary sm" id="loadEspn">${d.fieldSource === 'dk' || d.fieldSource === 'paste' ? 'Link to ESPN' : d.sources?.espn ? 'Refresh from ESPN' : 'Load field from ESPN'}</button></div>
+
+        <h3>DraftKings salaries (sort order)</h3>
+        ${d.dkStatus ? `<div class="row small"><span class="grow">${esc(d.dkStatus.fileName)} <span class="muted">uploaded ${new Date(d.dkStatus.uploadedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></span><button class="btn sm danger" id="dkClear">Remove</button></div>` : ''}
+        <label class="btn sm ${d.dkStatus ? '' : 'primary'} file-btn">${d.dkStatus ? 'Upload a new file' : 'Upload DraftKings salary CSV'}<input type="file" id="dkFile" accept=".csv,text/csv" hidden /></label>
+        <label class="row small" style="gap:8px"><input type="checkbox" id="showSal" ${d.showSalaries !== false ? 'checked' : ''} /> Show salaries in the Draft Room</label>
+        <p class="tiny muted">On DraftKings, open a golf contest for this tournament and choose Export to CSV (DKSalaries.csv).</p>
+        ${unmatchedHtml}
+        ${autoHtml}
+        ${linkHtml}
+
+        <details><summary class="small">Paste names instead (one per line)</summary>
           <textarea id="names" rows="6" style="width:100%;margin-top:8px" placeholder="Scottie Scheffler&#10;Rory McIlroy"></textarea>
-          <div class="row"><button class="btn sm" id="pasteReplace">Replace field</button><button class="btn sm" id="pasteAppend">Add to field</button></div></details>
-        <p class="tiny muted">${d.fieldLoadedAt ? `Last loaded ${new Date(d.fieldLoadedAt).toLocaleString()}` : 'Not loaded yet.'} Reloading keeps every drafted golfer.</p>
+          <div class="row"><button class="btn sm" id="pasteReplace">Replace pasted list</button><button class="btn sm" id="pasteAppend">Add to pasted list</button>${d.sources?.paste ? '<button class="btn sm danger" id="pasteClear">Clear pasted list</button>' : ''}</div>
+          <p class="tiny muted">A pasted list is only used when there's no ESPN field.</p></details>
+        <details id="aliasBox"><summary class="small">Saved name pairings</summary><div id="aliasList" class="small muted" style="margin-top:8px">Loading...</div></details>
+        <p class="tiny muted">${d.fieldLoadedAt ? `Last changed ${new Date(d.fieldLoadedAt).toLocaleString()}.` : ''} Drafted golfers are always kept.</p>
       </section>
- 
+
       <section class="card pad stack"><h2>Fix a golfer's score</h2>
         <p class="tiny muted">Only needed if ESPN is wrong or late. Example: a withdrawal before the first tee shot that ESPN hasn't posted yet.</p>
         <form id="ovForm" class="stack">
@@ -592,7 +639,7 @@ async function renderManage(id) {
         </form>
         ${Object.keys(ov).length ? `<div class="table-wrap"><table><tbody>${Object.entries(ov).map(([k, o]) => { const nm = d.picks.find((p) => p.key === k)?.name || k; return `<tr><td>${esc(nm)}</td><td class="small">${[o.status && o.status.toUpperCase(), o.started === false ? 'not started' : o.started ? 'started' : '', (o.rounds || []).some((x) => x) ? `rounds ${(o.rounds || []).map((x) => x || '-').join('/')}` : ''].filter(Boolean).join(', ')}</td><td class="num"><button class="btn sm" data-clear="${esc(nm)}">Clear</button></td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </section>
- 
+
       <section class="card pad stack"><h2>Details</h2>
         <form id="details" class="stack">
           <div class="grid-form"><label class="field">Name<input name="name" value="${esc(d.name)}" /></label><label class="field">Year<input name="year" type="number" value="${esc(d.year)}" /></label><label class="field">Entry fee<input name="entryFee" value="${esc(d.entryFee || '')}" /></label></div>
@@ -605,7 +652,7 @@ async function renderManage(id) {
     </div>`;
     bind();
   }
- 
+
   function bind() {
     const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = fn; };
     on('#start', () => act('status', { status: 'drafting' }, 'Draft is open'));
@@ -638,11 +685,50 @@ async function renderManage(id) {
     on('#loadEspn', () => guard(async () => {
       await api('POST', `/admin/draft/${id}/settings`, { eventInput: $('#eventInput').value });
       d = await api('POST', `/admin/draft/${id}/field`, { source: 'espn' });
-      toast(`Loaded ${d.field.length} golfers`);
+      toast(`ESPN field loaded: ${d.sources?.espn || d.field.length} golfers`);
       draw();
     }));
-    on('#pasteReplace', () => act('field', { source: 'paste', names: $('#names').value, mode: 'replace' }, 'Field replaced'));
+    on('#pasteReplace', () => act('field', { source: 'paste', names: $('#names').value, mode: 'replace' }, 'Pasted list saved'));
     on('#pasteAppend', () => act('field', { source: 'paste', names: $('#names').value, mode: 'append' }, 'Golfers added'));
+    on('#pasteClear', () => act('field', { source: 'clear-paste' }, 'Pasted list cleared'));
+    on('#dkClear', async () => { if (await confirmBox('Remove DraftKings file?', 'Salaries and salary sorting will be removed from this draft. Saved name pairings are kept.', 'Remove')) act('dk-clear', {}, 'DraftKings file removed'); });
+    const dkFile = $('#dkFile');
+    if (dkFile) dkFile.onchange = () => guard(async () => {
+      const file = dkFile.files[0];
+      if (!file) return;
+      if (file.size > 2_000_000) throw new Error('That file is too large to be a DraftKings salary export.');
+      const csv = await file.text();
+      d = await api('POST', `/admin/draft/${id}/dk`, { csv, fileName: file.name });
+      const u = d.dkStatus?.unmatched?.length || 0;
+      toast(`${d.dkStatus.matched} golfers matched${u && d.fieldSource !== 'dk' ? `, ${u} need a look` : ''}`, 4000);
+      draw();
+    });
+    const showSal = $('#showSal');
+    if (showSal) showSal.onchange = () => act('settings', { showSalaries: showSal.checked }, showSal.checked ? 'Salaries shown' : 'Salaries hidden');
+    $$('.pair-row').forEach((row) => $$('button[data-act]', row).forEach((b) => (b.onclick = () => {
+      const fromName = row.dataset.from;
+      if (b.dataset.act === 'ignore') return act('pair', { fromName, ignore: true }, `${fromName} marked not in field`);
+      const toKey = $('.pairSel', row).value;
+      if (!toKey) return toast('Choose a golfer first');
+      act('pair', { fromName, toKey }, 'Paired and saved');
+    })));
+    const aliasBox = $('#aliasBox');
+    if (aliasBox) aliasBox.ontoggle = () => { if (aliasBox.open) loadAliases(); };
+    async function loadAliases() {
+      const { aliases } = await api('GET', '/admin/aliases').catch(() => ({ aliases: {} }));
+      const entries = Object.entries(aliases);
+      const nameFor = (k) => d.field.find((f) => f.key === k)?.name || k;
+      $('#aliasList').innerHTML = entries.length
+        ? entries.map(([from, to]) => `<div class="row between" style="padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(from)} &rarr; ${esc(nameFor(to))}</span><button class="btn sm danger" data-alias="${esc(from)}">Forget</button></div>`).join('')
+        : 'No saved pairings yet.';
+      $$('[data-alias]').forEach((b) => (b.onclick = () => guard(async () => {
+        await api('DELETE', `/admin/aliases?name=${encodeURIComponent(b.dataset.alias)}`);
+        d = await api('POST', `/admin/draft/${id}/rebuild`);
+        draw();
+        $('#aliasBox').open = true;
+        loadAliases();
+      })));
+    }
     $('#ovForm').onsubmit = (e) => {
       e.preventDefault();
       const f = e.target;
@@ -663,7 +749,7 @@ async function renderManage(id) {
   draw();
   loadIndex();
 }
- 
+
 async function renderWinnersEditor() {
   let { winners } = await api('GET', '/history');
   const cols = [['year', 'Year', 70], ['tournament', 'Tournament', 160], ['winner', 'Winner', 110], ['winnerDraftPos', 'Pos', 60], ['runnerUp', 'Runner-up', 110], ['runnerUpDraftPos', 'Pos', 60], ['sideBet', 'Side bet', 110]];
@@ -679,6 +765,5 @@ async function renderWinnersEditor() {
   };
   draw();
 }
- 
+
 route();
- 

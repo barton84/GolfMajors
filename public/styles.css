@@ -183,6 +183,23 @@ html { scroll-behavior: smooth; }
 .order-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .order-list .n { width: 2ch; font-weight: 700; color: var(--muted); }
 
+/* Field sources */
+.src-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.src { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--bg-2); }
+.src b { display: block; font-size: 13px; }
+.src span { font-size: 12px; color: var(--muted); }
+.src.on { background: var(--accent-soft); border-color: var(--accent); }
+.field-card h3 { margin-top: 18px; margin-bottom: 0; }
+.file-btn { cursor: pointer; }
+.pair-box { border: 1px solid var(--accent); border-radius: 10px; padding: 10px; background: var(--accent-soft); }
+.pair-box.bad { border-color: var(--bad); background: transparent; }
+.pair-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.pair-row > div:first-child { flex: 1 1 100%; }
+.pair-row select { flex: 1 1 160px; min-width: 0; }
+.pair-row .btn { white-space: nowrap; }
+.player .sal { font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .src-grid { grid-template-columns: 1fr; } }
+
 /* Rules */
 .rules { max-width: 760px; margin: 0 auto; }
 .rules ul, .rules ol { padding-left: 1.2em; margin: 0.4em 0; }
