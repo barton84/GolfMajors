@@ -390,7 +390,7 @@ async function showScorecard(draft, key, name, g) {
   m.onclose = () => m.classList.remove('wide');
   m.onclick = (e) => { if (e.target === m) m.close(); };
   const head = `<div class="sc-head"><div><h3 style="margin:0">${esc(name)}</h3>
-    <div class="tiny muted">${g ? [g.pos && `Pos ${esc(g.pos)}`, g.status !== 'active' ? esc(g.status.toUpperCase()) : `${esc(fmtPar(g.teamToPar))} total`, g.thru && g.status === 'active' ? `Thru ${esc(g.thru)}` : ''].filter(Boolean).join(' · ') : ''}</div></div>
+    <div class="tiny muted">${g ? [g.pos && `Pos ${esc(g.pos)}`, g.status !== 'active' ? esc(g.status.toUpperCase()) : `${esc(fmtPar(g.teamToPar))} total`, g.thru && g.status === 'active' ? `Thru ${esc(g.thru)}` : ''].filter(Boolean).join(' · ') : ''}</div>${g?.subFor ? `<div class="tiny" style="margin-top:4px"><span class="badge">SUB</span> Subbed in for ${esc(g.subFor)}</div>` : ''}</div>
     <button class="btn sm" value="close" id="scClose">Close</button></div>`;
   m.innerHTML = `${head}<div class="loading" style="padding:30px 0">Loading scorecard...</div>`;
   if (!m.open) m.showModal();
@@ -467,7 +467,7 @@ function renderField(draft) {
     <div class="chips" id="fChips"></div>
     <div id="fErr"></div>
     <div class="card"><div class="table-wrap" id="fTable"><div class="loading">Loading field...</div></div></div>
-    <p class="tiny muted" style="margin:10px 2px">Colored rows are drafted golfers. <b>BU</b> = backup pick (rounds ${draft.settings.starters + 1}+). Tap a golfer for their scorecard.</p>`;
+    <p class="tiny muted" style="margin:10px 2px">Colored rows are drafted golfers. <b>BU</b> = backup pick (rounds ${draft.settings.starters + 1}+). <b>SUB</b> = backup who replaced a withdrawal and is counting. Tap a golfer for their scorecard.</p>`;
   $('#fSearch').oninput = (e) => { search = e.target.value.toLowerCase(); drawTable(); };
 
   const statusRank = (g) => (g.status === 'active' ? 0 : g.status === 'cut' ? 1 : 2);
@@ -504,7 +504,7 @@ function renderField(draft) {
       ${rows.map((g) => {
         const o = g.owner;
         const [bg, fg] = o ? mgrColor(draft, o.managerId) : [];
-        const mtag = o ? `<span class="mtag" style="background:${bg};color:${fg}">${esc(mgrName(o.managerId))}${o.backup ? '<b>BU</b>' : ''}</span>` : '';
+        const mtag = o ? `<span class="mtag" style="background:${bg};color:${fg}">${esc(mgrName(o.managerId))}${o.subFor ? `<b title="Subbed in for ${esc(o.subFor)}">SUB</b>` : o.backup ? '<b>BU</b>' : ''}</span>` : '';
         const score = g.status === 'active' ? (g.toPar === null ? (started ? '-' : '') : fmtPar(g.toPar)) : `<span class="badge out">${esc(g.status.toUpperCase())}</span>`;
         const thru = g.status !== 'active' ? '' : g.thru || (g.teeTime ? fmtTee(g.teeTime).replace(/^\w+ /, '') : '');
         return `<tr class="${o ? 'owned' : ''} ${g.status !== 'active' ? 'out' : ''}" ${o ? `style="--c:${bg}"` : ''}>
@@ -524,7 +524,7 @@ function renderField(draft) {
     }));
     $$('#fTable .g-link').forEach((b) => (b.onclick = () => {
       const g = data.golfers.find((x) => x.key === b.dataset.card);
-      showScorecard(draft, b.dataset.card, b.dataset.name, g ? { ...g, teamToPar: g.toPar } : null);
+      showScorecard(draft, b.dataset.card, b.dataset.name, g ? { ...g, teamToPar: g.toPar, subFor: g.owner?.subFor } : null);
     }));
   }
 
@@ -805,6 +805,20 @@ async function renderManage(id) {
         <p class="tiny muted">${d.fieldLoadedAt ? `Last changed ${new Date(d.fieldLoadedAt).toLocaleString()}.` : ''} Drafted golfers are always kept.</p>
       </section>
 
+      <section class="card pad stack"><h2>Edit picks</h2>
+        <p class="tiny muted">Put any golfer into a team's pick for the whole tournament, or swap two drafted golfers between teams.${d.status === 'final' ? ' This tournament is finalized, so click <b>Re-finalize</b> after editing to update the saved results.' : ''}</p>
+        ${d.picks.length ? `<div class="stack" id="editPicks">
+          <div class="grid-form">
+            <label class="field">Manager<select id="epMgr">${d.order.map((mid) => `<option value="${esc(mid)}">${esc(mgrName(d, mid))}</option>`).join('')}</select></label>
+            <label class="field">Pick<select id="epPick"></select></label>
+          </div>
+          <label class="field">New golfer<input id="epSearch" type="search" placeholder="Search the field" autocomplete="off" /></label>
+          <select id="epGolfer" size="6" style="width:100%"></select>
+          <div class="row"><button class="btn primary sm" id="epGo">Replace pick</button></div>
+        </div>` : '<p class="small muted">No picks yet.</p>'}
+        ${(d.pickLog || []).length ? `<details><summary class="small">Pick changes (${d.pickLog.length})</summary><ul class="small" style="padding-left:1.1em;margin:8px 0 0">${d.pickLog.map((l) => `<li>${esc(l.text)} <span class="muted tiny">${new Date(l.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></li>`).join('')}</ul></details>` : ''}
+      </section>
+
       <section class="card pad stack"><h2>Fix a golfer's score</h2>
         <p class="tiny muted">Only needed if ESPN is wrong or late. Example: a withdrawal before the first tee shot that ESPN hasn't posted yet.</p>
         <form id="ovForm" class="stack">
@@ -905,6 +919,44 @@ async function renderManage(id) {
         $('#aliasBox').open = true;
         loadAliases();
       })));
+    }
+    if ($('#editPicks')) {
+      const ord = (n) => { const x = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (x[(v - 20) % 10] || x[v] || x[0]); };
+      const starters = d.settings.starters;
+      const fillPicks = () => {
+        const mine = d.picks.filter((x) => x.managerId === $('#epMgr').value).sort((a, b) => a.round - b.round);
+        $('#epPick').innerHTML = mine.map((x) => `<option value="${x.n}">${ord(x.round)} pick: ${esc(x.name)}${x.round > starters ? ' (backup)' : ''}</option>`).join('');
+      };
+      const fillGolfers = () => {
+        const q = $('#epSearch').value.trim().toLowerCase();
+        const owner = new Map(d.picks.map((x) => [x.key, x]));
+        const list = d.field.filter((f) => !q || f.name.toLowerCase().includes(q));
+        const free = list.filter((f) => !owner.has(f.key));
+        const taken = list.filter((f) => owner.has(f.key));
+        $('#epGolfer').innerHTML = (free.length ? `<optgroup label="Undrafted">${free.map((f) => `<option value="${esc(f.key)}">${esc(f.name)}</option>`).join('')}</optgroup>` : '')
+          + (taken.length ? `<optgroup label="Already drafted (swap)">${taken.map((f) => { const o = owner.get(f.key); return `<option value="${esc(f.key)}">${esc(f.name)} (${esc(mgrName(d, o.managerId))}, ${ord(o.round)} pick)</option>`; }).join('')}</optgroup>` : '');
+      };
+      $('#epMgr').onchange = fillPicks;
+      $('#epSearch').oninput = fillGolfers;
+      fillPicks();
+      fillGolfers();
+      $('#epGo').onclick = async () => {
+        const p = d.picks.find((x) => x.n === Number($('#epPick').value));
+        const g = d.field.find((f) => f.key === $('#epGolfer').value);
+        if (!p || !g) return toast('Choose a pick and a golfer');
+        if (g.key === p.key) return toast(`${g.name} is already in that spot`);
+        const who = mgrName(d, p.managerId);
+        const other = d.picks.find((x) => x.key === g.key);
+        let ok;
+        if (other) {
+          const them = mgrName(d, other.managerId);
+          ok = await confirmBox(`Swap golfers?`, `<b>${esc(g.name)}</b> is ${esc(them)}'s ${ord(other.round)} pick.<br><br>${esc(who)}'s ${ord(p.round)} pick: ${esc(p.name)} &rarr; <b>${esc(g.name)}</b><br>${esc(them)}'s ${ord(other.round)} pick: ${esc(g.name)} &rarr; <b>${esc(p.name)}</b><br><br>Both changes count for the full tournament.`, 'Swap');
+        } else {
+          ok = await confirmBox(`Replace ${who}'s ${ord(p.round)} pick?`, `${esc(p.name)} &rarr; <b>${esc(g.name)}</b><br><br>${esc(g.name)}'s full tournament will count for ${esc(who)}. ${esc(p.name)} will no longer count.`, 'Replace');
+        }
+        if (!ok) return;
+        act('replace-pick', { n: p.n, golferKey: g.key, swap: !!other }, other ? 'Golfers swapped' : 'Pick replaced');
+      };
     }
     $('#ovForm').onsubmit = (e) => {
       e.preventDefault();

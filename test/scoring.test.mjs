@@ -87,3 +87,15 @@ test('hole-by-hole: pars derived, strokes add up to round totals, partial rounds
   const day = feed.golfers.find((g) => g.name === 'Jason Day');
   assert.equal(h.players[day.espnId][0].filter(Boolean).length, 11);
 });
+
+test('DQ before the first tee shot takes 80s and does not bring in a sub', () => {
+  const d = usOpenDraft();
+  d.overrides = { [nameKey('Scottie Scheffler')]: { status: 'dq', started: false } };
+  const cody = computeLeaderboard(d, feed).teams.find((t) => t.manager === 'Cody');
+  assert.equal(cody.lineup.some((g) => g.subFor), false);
+  const s = cody.lineup.find((g) => g.name === 'Scottie Scheffler');
+  assert.equal(s.status, 'dq');
+  // A DQ keeps completed rounds and takes 80 for any round without a score (none here in the final data)
+  assert.equal(s.strokes, 280);
+  assert.ok(cody.bench.every((b) => !b.usedAsSub));
+});
