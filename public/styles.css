@@ -192,6 +192,34 @@ table.sc tr.par td { color: var(--muted); }
 @media (max-width: 720px) { .sc-wrap { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .sc-tab .long { display: none; } .sc-tab .short { display: inline; } .sc-tab { padding: 6px 10px; } }
 
+/* Manager colors + Field tab */
+.mdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+.fchip { --c: var(--ink); --ct: var(--card); font: inherit; font-size: 13px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.fchip::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.fchip[data-f='all']::before, .fchip[data-f='drafted']::before, .fchip[data-f='undrafted']::before { display: none; }
+.fchip span { color: var(--muted); font-weight: 700; }
+.fchip.on { background: var(--c); border-color: var(--c); color: var(--ct); }
+.fchip.on span { color: inherit; opacity: .8; }
+.fchip.on::before { background: var(--ct); }
+.field-table th.sortable { cursor: pointer; user-select: none; }
+.field-table th.sorted { color: var(--ink); }
+.field-table .arr { font-size: 8px; margin-left: 4px; vertical-align: 1px; }
+.field-table tr.owned td { background: color-mix(in srgb, var(--c) 13%, transparent); }
+.field-table tr.owned td:first-child { box-shadow: inset 4px 0 0 var(--c); }
+.field-table tr.out td { opacity: .7; }
+.field-table td.g { font-weight: 600; }
+.mtag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 5px; white-space: nowrap; }
+.mtag b { font-size: 9px; letter-spacing: .04em; padding: 0 4px; border-radius: 3px; background: rgba(255,255,255,.28); }
+.show-sm { display: none; }
+@media (max-width: 520px) {
+  .show-sm { display: block; margin-top: 3px; }
+  .field-table .hide-sm { display: none; }
+  .field-table th, .field-table td { padding: 7px 5px; }
+  .field-table td.g { white-space: normal; }
+  .mtag { font-size: 10.5px; padding: 1px 6px; }
+}
+
 /* Draft room */
 .clock { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; border-radius: 14px; background: var(--brand); color: var(--brand-ink); margin-bottom: 16px; }
 [data-theme='arena'] .clock { background: linear-gradient(90deg, #5b21b6, #7c3aed); }

@@ -53,6 +53,18 @@ function fmtTee(iso) {
   if (Number.isNaN(d.getTime())) return String(iso);
   return d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
+// Manager colors: assigned automatically by the manager's position in the draft's manager list.
+const PALETTE = [
+  ['#2563eb', '#fff'], ['#dc2626', '#fff'], ['#16a34a', '#fff'], ['#9333ea', '#fff'], ['#ea580c', '#fff'], ['#0891b2', '#fff'],
+  ['#db2777', '#fff'], ['#ca8a04', '#1a1400'], ['#4f46e5', '#fff'], ['#65a30d', '#101a00'], ['#0f766e', '#fff'], ['#78716c', '#fff'],
+];
+function mgrColor(draft, managerId) {
+  const i = (draft.managers || []).findIndex((m) => m.id === managerId);
+  if (i < 0) return ['#888', '#fff'];
+  const m = draft.managers[i];
+  return m.color ? [m.color, m.colorText || '#fff'] : PALETTE[i % PALETTE.length];
+}
+const mgrDot = (draft, id) => `<i class="mdot" style="background:${mgrColor(draft, id)[0]}"></i>`;
 const fmtSalary = (n) => `$${Number(n).toLocaleString('en-US')}`;
 const statusLabel = { setup: 'Setting up', drafting: 'Drafting', live: 'Live', final: 'Final' };
 
@@ -90,6 +102,7 @@ function setTabs(draft, active) {
     const base = `#/d/${draft.id}`;
     links.push(['draft', `${base}/draft`, 'Draft Room']);
     links.push(['leaderboard', `${base}/leaderboard`, 'Leaderboard']);
+    links.push(['field', `${base}/field`, 'Field']);
     links.push(['sidebet', `${base}/sidebet`, 'Side Bet']);
     links.push(['rules', `${base}/rules`, 'Rules']);
   }
@@ -125,6 +138,7 @@ async function route() {
       setTabs(draft, view);
       if (view === 'draft') return renderDraftRoom(draft);
       if (view === 'leaderboard') return renderLeaderboard(draft);
+      if (view === 'field') return renderField(draft);
       if (view === 'sidebet') return renderSideBet(draft);
       if (view === 'rules') return renderRules(draft);
     }
@@ -338,12 +352,12 @@ function renderLeaderboard(draft) {
     const started = lb.final || (state && state !== 'pre');
     const standings = `<div class="card"><div class="table-wrap"><table class="standings">
       <thead><tr><th>Pos</th><th>Manager</th><th class="num">To par</th><th class="num">Strokes</th><th class="num hide-sm">Pick</th></tr></thead><tbody>
-      ${lb.teams.map((t) => `<tr class="${t.rank === 1 ? 'first' : ''}"><td class="rank">${t.rank}</td><td class="mgr"><a href="#" class="jump" data-team="${esc(t.managerId)}">${esc(t.manager)}</a>${t.tiedOnScore && started ? ` <button type="button" class="tb-chip" data-tb="${esc(t.managerId)}">Tiebreaker</button>` : ''}</td>
+      ${lb.teams.map((t) => `<tr class="${t.rank === 1 ? 'first' : ''}"><td class="rank">${t.rank}</td><td class="mgr">${mgrDot(draft, t.managerId)}<a href="#" class="jump" data-team="${esc(t.managerId)}">${esc(t.manager)}</a>${t.tiedOnScore && started ? ` <button type="button" class="tb-chip" data-tb="${esc(t.managerId)}">Tiebreaker</button>` : ''}</td>
         <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td><td class="num">${t.strokesComplete ? t.strokes : '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
       </tbody></table></div></div>
 `;
     const cards = lb.teams.map((t) => `<article class="card team" id="team-${esc(t.managerId)}">
-      <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${esc(t.manager)}</h3><div class="tiny muted">${t.strokesComplete ? `${t.strokes} strokes` : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
+      <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${mgrDot(draft, t.managerId)}${esc(t.manager)}</h3><div class="tiny muted">${t.strokesComplete ? `${t.strokes} strokes` : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
       <div class="tot ${parCls(t.toPar)}">${esc(t.toParDisplay)}</div></div>
       <div class="table-wrap"><table><thead><tr><th class="hide-sm">Pos</th><th>Golfer</th><th class="c">Score</th><th class="c hide-sm">Today</th><th class="c">Thru</th><th class="c hide-sm">R1</th><th class="c hide-sm">R2</th><th class="c hide-sm">R3</th><th class="c hide-sm">R4</th><th class="num">Tot</th></tr></thead>
       <tbody>${t.lineup.map((g) => golferRow(g, g.counting ? '' : 'dim')).join('')}
@@ -441,6 +455,92 @@ function showTiebreak(lb, managerId) {
   m.onclick = (e) => { if (e.target === m) m.close(); };
 }
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+
+function renderField(draft) {
+  let filter = 'all';
+  let sort = { col: 'pos', dir: 1 };
+  let search = '';
+  let data = null;
+  const mgrName = (id) => draft.managers.find((m) => m.id === id)?.name || '';
+  app.innerHTML = `<div class="hero"><div><h1>Field</h1><div class="meta" id="fMeta"></div></div>
+      <input id="fSearch" type="search" placeholder="Search golfers" autocomplete="off" style="min-width:0;width:220px;max-width:100%" /></div>
+    <div class="chips" id="fChips"></div>
+    <div id="fErr"></div>
+    <div class="card"><div class="table-wrap" id="fTable"><div class="loading">Loading field...</div></div></div>
+    <p class="tiny muted" style="margin:10px 2px">Colored rows are drafted golfers. <b>BU</b> = backup pick (rounds ${draft.settings.starters + 1}+). Tap a golfer for their scorecard.</p>`;
+  $('#fSearch').oninput = (e) => { search = e.target.value.toLowerCase(); drawTable(); };
+
+  const statusRank = (g) => (g.status === 'active' ? 0 : g.status === 'cut' ? 1 : 2);
+  const tot = (g) => (g.rounds || []).reduce((a, r) => a + (r || 0), 0);
+  const sorters = {
+    pos: (a, b) => statusRank(a) - statusRank(b) || a.sortOrder - b.sortOrder,
+    player: (a, b) => a.name.localeCompare(b.name),
+    mgr: (a, b) => (a.owner ? 0 : 1) - (b.owner ? 0 : 1) || mgrName(a.owner?.managerId).localeCompare(mgrName(b.owner?.managerId)) || a.sortOrder - b.sortOrder,
+    score: (a, b) => statusRank(a) - statusRank(b) || (a.toPar ?? 999) - (b.toPar ?? 999) || a.sortOrder - b.sortOrder,
+    r0: null, r1: null, r2: null, r3: null,
+    tot: (a, b) => statusRank(a) - statusRank(b) || (tot(a) || 9999) - (tot(b) || 9999),
+  };
+  const roundSort = (i) => (a, b) => (a.rounds[i] || 999) - (b.rounds[i] || 999) || a.sortOrder - b.sortOrder;
+
+  function drawChips() {
+    const counts = {};
+    data.golfers.forEach((g) => { if (g.owner) counts[g.owner.managerId] = (counts[g.owner.managerId] || 0) + 1; });
+    const chip = (id, label, style = '') => `<button type="button" class="fchip ${filter === id ? 'on' : ''}" data-f="${esc(id)}" style="${style}">${label}</button>`;
+    $('#fChips').innerHTML = chip('all', `All <span>${data.golfers.length}</span>`) + chip('drafted', `Drafted <span>${data.golfers.filter((g) => g.owner).length}</span>`) + chip('undrafted', 'Undrafted')
+      + draft.managers.map((m) => { const [bg, fg] = mgrColor(draft, m.id); return chip(m.id, `${esc(m.name)} <span>${counts[m.id] || 0}</span>`, `--c:${bg};--ct:${fg}`); }).join('');
+    $$('.fchip').forEach((b) => (b.onclick = () => { filter = b.dataset.f; drawChips(); drawTable(); }));
+  }
+
+  function drawTable() {
+    let rows = data.golfers.filter((g) => (filter === 'all' ? true : filter === 'drafted' ? g.owner : filter === 'undrafted' ? !g.owner : g.owner?.managerId === filter));
+    if (search) rows = rows.filter((g) => g.name.toLowerCase().includes(search));
+    const fn = sort.col.startsWith('r') && sort.col.length === 2 ? roundSort(Number(sort.col[1])) : sorters[sort.col];
+    rows = [...rows].sort((a, b) => fn(a, b) * sort.dir);
+    const th = (col, label, cls = '') => `<th class="sortable ${cls} ${sort.col === col ? 'sorted' : ''}" data-s="${col}">${label}${sort.col === col ? `<span class="arr">${sort.dir > 0 ? '&#9650;' : '&#9660;'}</span>` : ''}</th>`;
+    const started = data.event?.state && data.event.state !== 'pre';
+    $('#fTable').innerHTML = rows.length ? `<table class="field-table"><thead><tr>
+        ${th('pos', 'Pos')}${th('mgr', 'Manager', 'hide-sm')}${th('player', 'Player')}${th('score', 'Score', 'c')}<th class="c hide-sm">Today</th><th class="c">Thru</th>
+        ${[0, 1, 2, 3].map((i) => th(`r${i}`, `R${i + 1}`, 'c hide-sm')).join('')}${th('tot', 'Tot', 'num')}</tr></thead><tbody>
+      ${rows.map((g) => {
+        const o = g.owner;
+        const [bg, fg] = o ? mgrColor(draft, o.managerId) : [];
+        const mtag = o ? `<span class="mtag" style="background:${bg};color:${fg}">${esc(mgrName(o.managerId))}${o.backup ? '<b>BU</b>' : ''}</span>` : '';
+        const score = g.status === 'active' ? (g.toPar === null ? (started ? '-' : '') : fmtPar(g.toPar)) : `<span class="badge out">${esc(g.status.toUpperCase())}</span>`;
+        const thru = g.status !== 'active' ? '' : g.thru || (g.teeTime ? fmtTee(g.teeTime).replace(/^\w+ /, '') : '');
+        return `<tr class="${o ? 'owned' : ''} ${g.status !== 'active' ? 'out' : ''}" ${o ? `style="--c:${bg}"` : ''}>
+          <td class="tiny muted">${esc(g.pos || '')}</td>
+          <td class="hide-sm">${o ? mtag : ''}</td>
+          <td class="g"><button type="button" class="g-link" data-card="${esc(g.key)}" data-name="${esc(g.name)}">${esc(g.name)}</button>${o ? `<div class="show-sm">${mtag}</div>` : ''}</td>
+          <td class="c ${parCls(g.toPar)}"><b>${score}</b></td>
+          <td class="c hide-sm ${parCls(Number(g.today))}">${esc(g.status === 'active' ? g.today || '' : '')}</td>
+          <td class="c tiny">${esc(thru)}</td>
+          ${[0, 1, 2, 3].map((i) => `<td class="c hide-sm">${g.rounds[i] || ''}</td>`).join('')}
+          <td class="num"><b>${tot(g) || ''}</b></td></tr>`;
+      }).join('')}</tbody></table>` : `<div class="pad muted">${data.golfers.length ? 'No golfers match.' : 'The field has not been loaded yet.'}</div>`;
+    $$('#fTable th.sortable').forEach((h) => (h.onclick = () => {
+      const col = h.dataset.s;
+      sort = sort.col === col ? { col, dir: -sort.dir } : { col, dir: 1 };
+      drawTable();
+    }));
+    $$('#fTable .g-link').forEach((b) => (b.onclick = () => {
+      const g = data.golfers.find((x) => x.key === b.dataset.card);
+      showScorecard(draft, b.dataset.card, b.dataset.name, g ? { ...g, teamToPar: g.toPar } : null);
+    }));
+  }
+
+  const load = async () => {
+    data = await api('GET', `/draft/${draft.id}/field`);
+    const st = data.event?.state;
+    $('#fMeta').innerHTML = `<span class="pill ${st === 'in' ? 'live' : ''}">${st === 'in' ? 'Live' : st === 'post' ? 'Round complete' : 'Not started'}</span>
+      ${data.event?.par ? `<span class="pill">Par ${data.event.par}</span>` : ''}
+      ${data.fetchedAt ? `<span class="tiny muted">Updated ${new Date(data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}`;
+    $('#fErr').innerHTML = data.error ? `<div class="notice bad" style="margin-bottom:12px">${esc(data.error)}</div>` : '';
+    drawChips();
+    drawTable();
+  };
+  guard(load);
+  if (draft.status !== 'final') every(() => load().catch(() => {}), 60_000);
+}
 
 function renderSideBet(draft) {
   app.innerHTML = `<div class="hero"><div><h1>Side Bet</h1><div class="meta">
