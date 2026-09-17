@@ -99,3 +99,41 @@ test('DQ before the first tee shot takes 80s and does not bring in a sub', () =>
   assert.equal(s.strokes, 280);
   assert.ok(cody.bench.every((b) => !b.usedAsSub));
 });
+
+test('real ESPN live feed (Biltmore R1): totals come from scoreToPar, not the stale score field', () => {
+  const raw = JSON.parse(fs.readFileSync(new URL('./espn-live-r1.json', import.meta.url)));
+  const live = parseEspn(raw, '401850914');
+  assert.equal(live.golfers.length, 132);
+  assert.equal(live.event.state, 'in');
+  assert.equal(live.event.par, 71);
+  const bh = live.golfers.find((g) => g.name === 'Billy Horschel');
+  assert.equal(bh.toPar, -1);
+  assert.equal(bh.today, '-1');
+  assert.equal(bh.thru, '1');
+  assert.equal(bh.started, true);
+  assert.equal(bh.pos, 'T1');
+  // Every golfer's parsed total matches ESPN's scoreToPar statistic
+  for (const c of raw.events[0].competitions[0].competitors) {
+    const stat = c.statistics.find((x) => x.name === 'scoreToPar');
+    const g = live.golfers.find((x) => x.espnId === String(c.athlete.id));
+    const expected = stat.displayValue === '-' ? null : stat.displayValue === 'E' ? 0 : Number(stat.displayValue);
+    assert.equal(g.toPar, expected, g.name);
+  }
+  const waiting = live.golfers.find((g) => g.teeTime && !g.started);
+  assert.equal(waiting.toPar, null);
+  assert.deepEqual(waiting.rounds, [null, null, null, null]);
+});
+
+test('real ESPN scorecards: player summary and core linescores parse hole by hole', async () => {
+  const { parsePlayerCard } = await import('../lib/espn.mjs');
+  const live = parseEspn(JSON.parse(fs.readFileSync(new URL('./espn-live-r1.json', import.meta.url))), '401850914');
+  assert.equal(live.event.holePars.reduce((a, b) => a + b, 0), 71);
+  const a = parsePlayerCard(JSON.parse(fs.readFileSync(new URL('./espn-playersummary.json', import.meta.url))), live.event.holePars);
+  assert.deepEqual(a.rounds[0][9], [3, -1]);
+  assert.equal(a.rounds[0].filter(Boolean).length, 1);
+  assert.equal(a.rounds[1], null);
+  assert.equal(a.pars[1], 3);
+  const b = parsePlayerCard(JSON.parse(fs.readFileSync(new URL('./espn-core-linescores.json', import.meta.url))), live.event.holePars);
+  assert.deepEqual(b.rounds[0].filter(Boolean), [[3, -1], [4, 1]]);
+  assert.equal(b.rounds[0][10][0], 4);
+});
