@@ -137,3 +137,17 @@ test('real ESPN scorecards: player summary and core linescores parse hole by hol
   assert.deepEqual(b.rounds[0].filter(Boolean), [[3, -1], [4, 1]]);
   assert.equal(b.rounds[0][10][0], 4);
 });
+
+test('live strokes: TOT includes the round in progress, ranking still by to-par', () => {
+  const raw = JSON.parse(fs.readFileSync(new URL('./espn-live-r1.json', import.meta.url)));
+  const live = parseEspn(raw, '401850914');
+  const bh = live.golfers.find((g) => g.name === 'Billy Horschel');
+  assert.equal(bh.currentStrokes, 3);
+  const picks = live.golfers.filter((g) => g.started).slice(0, 8).map((g, i) => ({ managerId: 'a', round: i + 1, name: g.name, espnId: g.espnId, key: g.key }));
+  const lb = computeLeaderboard({ managers: [{ id: 'a', name: 'A' }], order: ['a'], picks, settings: {} }, live);
+  const t = lb.teams[0];
+  const counting = t.lineup.filter((g) => g.counting);
+  assert.equal(t.strokes, counting.reduce((s, g) => s + g.currentStrokes, 0));
+  assert.ok(t.strokes > 0);
+  assert.equal(t.strokesComplete, false);
+});

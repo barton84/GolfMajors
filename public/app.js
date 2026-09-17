@@ -353,11 +353,11 @@ function renderLeaderboard(draft) {
     const standings = `<div class="card"><div class="table-wrap"><table class="standings">
       <thead><tr><th>Pos</th><th>Manager</th><th class="num">To par</th><th class="num">Strokes</th><th class="num hide-sm">Pick</th></tr></thead><tbody>
       ${lb.teams.map((t) => `<tr class="${t.rank === 1 ? 'first' : ''}"><td class="rank">${t.rank}</td><td class="mgr">${mgrDot(draft, t.managerId)}<a href="#" class="jump" data-team="${esc(t.managerId)}">${esc(t.manager)}</a>${t.tiedOnScore && started ? ` <button type="button" class="tb-chip" data-tb="${esc(t.managerId)}">Tiebreaker</button>` : ''}</td>
-        <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td><td class="num">${t.strokesComplete ? t.strokes : '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
+        <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td><td class="num">${t.strokes || '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
       </tbody></table></div></div>
 `;
     const cards = lb.teams.map((t) => `<article class="card team" id="team-${esc(t.managerId)}">
-      <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${mgrDot(draft, t.managerId)}${esc(t.manager)}</h3><div class="tiny muted">${t.strokesComplete ? `${t.strokes} strokes` : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
+      <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${mgrDot(draft, t.managerId)}${esc(t.manager)}</h3><div class="tiny muted">${t.strokes ? `${t.strokes} strokes · ` : ''}${t.strokesComplete ? 'Final' : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
       <div class="tot ${parCls(t.toPar)}">${esc(t.toParDisplay)}</div></div>
       <div class="table-wrap"><table><thead><tr><th class="hide-sm">Pos</th><th>Golfer</th><th class="c">Score</th><th class="c hide-sm">Today</th><th class="c">Thru</th><th class="c hide-sm">R1</th><th class="c hide-sm">R2</th><th class="c hide-sm">R3</th><th class="c hide-sm">R4</th><th class="num">Tot</th></tr></thead>
       <tbody>${t.lineup.map((g) => golferRow(g, g.counting ? '' : 'dim')).join('')}
@@ -422,10 +422,10 @@ async function showScorecard(draft, key, name, g) {
     const card = rounds[sel];
     const strokes = played[sel].reduce((a, h) => a + h[0], 0);
     const rel = played[sel].every((h) => h[1] !== null) ? played[sel].reduce((a, h) => a + h[1], 0) : null;
-    const tabs = [0, 1, 2, 3].map((i) => `<button type="button" class="sc-tab ${i === sel ? 'on' : ''}" data-r="${i}" ${played[i].length ? '' : 'disabled'}><span class="long">Round </span><span class="short">R</span>${i + 1}${played[i].length ? `<span class="n">${played[i].reduce((a, h) => a + h[0], 0)}</span>` : ''}</button>`).join('');
+    const tabs = [0, 1, 2, 3].map((i) => `<button type="button" class="sc-tab ${i === sel ? 'on' : ''}" data-r="${i}" ${played[i].length ? '' : 'disabled'}><span class="long">Round&nbsp;</span><span class="short">R</span>${i + 1}</button>`).join('');
     const penalty = g && g.status !== 'active' && g.penaltyRounds?.[sel] ? `<p class="small pen" style="margin:6px 0 0">Counts as ${g.scoredRounds[sel]} for your team (missed round).</p>` : '';
     m.innerHTML = `${head}<div class="sc-tabs">${tabs}</div>
-      ${card && played[sel].length ? `<div class="sc-sum small">${played[sel].length < 18 ? `Thru ${played[sel].length}: ` : ''}<b>${strokes}</b>${rel !== null ? ` (${esc(fmtPar(rel))})` : ''}</div>
+      ${card && played[sel].length ? `<div class="sc-sum small">${played[sel].length < 18 ? `Thru ${played[sel].length}:` : 'Final:'} ${rel !== null ? `<b>(${esc(fmtPar(rel))})</b> ` : ''}${strokes} total shots</div>
       <div class="sc-wrap">${half(card, 0, 'Out')}${half(card, 9, 'In')}</div>` : `<p class="muted">No holes played in round ${sel + 1}.</p>`}
       ${penalty}
       <div class="sc-legend tiny"><span><i class="sc-cell eagle"></i>Eagle or better</span><span><i class="sc-cell birdie"></i>Birdie</span><span><i class="sc-cell bogey"></i>Bogey</span><span><i class="sc-cell dbl"></i>Double bogey or worse</span></div>`;
@@ -471,7 +471,7 @@ function renderField(draft) {
   $('#fSearch').oninput = (e) => { search = e.target.value.toLowerCase(); drawTable(); };
 
   const statusRank = (g) => (g.status === 'active' ? 0 : g.status === 'cut' ? 1 : 2);
-  const tot = (g) => (g.rounds || []).reduce((a, r) => a + (r || 0), 0);
+  const tot = (g) => (g.rounds || []).reduce((a, r) => a + (r || 0), 0) + (g.status === 'active' ? g.currentStrokes || 0 : 0);
   const sorters = {
     pos: (a, b) => statusRank(a) - statusRank(b) || a.sortOrder - b.sortOrder,
     player: (a, b) => a.name.localeCompare(b.name),
