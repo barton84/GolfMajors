@@ -319,7 +319,9 @@ async function identify(draft) {
 function roundCell(g, i) {
   const v = g.scoredRounds?.[i];
   if (!v) return '<td class="c hide-sm">-</td>';
-  return `<td class="c hide-sm ${g.penaltyRounds?.[i] ? 'pen' : ''}">${v}</td>`;
+  // A round the golfer never played counts as the penalty score; show a red dash instead of the number.
+  if (g.penaltyRounds?.[i]) return `<td class="c hide-sm pen" title="Missed round: counts as ${v}">&ndash;</td>`;
+  return `<td class="c hide-sm">${v}</td>`;
 }
 function golferRow(g, extraCls = '') {
   const thru = g.status !== 'active' ? '' : g.thru ? g.thru : g.teeTime ? fmtTee(g.teeTime).replace(/^\w+ /, '') : '-';
@@ -363,7 +365,11 @@ function renderLeaderboard(draft) {
       <tbody>${t.lineup.map((g) => golferRow(g, g.counting ? '' : 'dim')).join('')}
       ${t.bench.filter((b) => !b.usedAsSub).map((g) => golferRow({ ...g, pos: `R${g.round}` }, 'bench-row')).join('')}</tbody></table></div>
     </article>`).join('');
-    $('#lb').outerHTML = `<div id="lb">${standings}<p class="tiny muted" style="margin:10px 2px 0">Faded rows don't count toward the team score. Gray rows are unused backups. <span class="pen">80</span> = missed round penalty.</p><div class="teams">${cards}</div></div>`;
+    $('#lb').outerHTML = `<div id="lb">${standings}<div class="legend tiny">
+      <span><i class="sw sw-dim"></i>Faded row: doesn't count toward the team score</span>
+      <span><i class="sw sw-bench"></i>Gray row: unused backup</span>
+      <span><i class="sw sw-pen">&ndash;</i>Missed round: counts as ${lb.settings.penalty} shots</span>
+    </div><div class="teams">${cards}</div></div>`;
     $$('#lb .tb-chip').forEach((b) => (b.onclick = () => showTiebreak(lb, b.dataset.tb)));
     $$('#lb .g-link').forEach((b) => (b.onclick = () => {
       const g = lb.teams.flatMap((t) => [...t.lineup, ...t.bench]).find((x) => (x.pickKey || x.key) === b.dataset.card);
