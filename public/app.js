@@ -344,7 +344,10 @@ function renderLeaderboard(draft) {
     <div class="row">${isAdmin() && draft.status !== 'final' ? '<button class="btn sm" id="refresh">Refresh from ESPN</button>' : ''}</div></div>
     <div id="lbErr"></div><div id="lb" class="loading">Loading scores...</div>`;
   const draw = async (force) => {
-    const lb = await api('GET', `/draft/${draft.id}/scores${force ? '?refresh=1' : ''}`);
+    const [lb, cut] = await Promise.all([
+      api('GET', `/draft/${draft.id}/scores${force ? '?refresh=1' : ''}`),
+      api('GET', `/draft/${draft.id}/cut`).catch(() => null),
+    ]);
     const state = lb.event?.state;
     const stateTxt = lb.final ? 'Final' : state === 'in' ? 'Live' : state === 'post' ? 'Round complete' : draft.picks.length ? 'Starts soon' : 'Not started';
     $('#lbMeta').innerHTML = `<span class="pill ${state === 'in' && !lb.final ? 'live' : ''}">${stateTxt}</span>
@@ -360,6 +363,12 @@ function renderLeaderboard(draft) {
         <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td><td class="num">${t.strokes || '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
       </tbody></table></div></div>
 `;
+    // Only while the cut is still in play. Once it is decided this drops off and the Cut tab has the result.
+    const cutStrip = cut?.available && !cut.final && cut.lines?.length
+      ? `<section class="card pad cutstrip">
+          <div class="cutstrip-head"><h2>Projected Cutline</h2><a href="#/d/${draft.id}/cut" class="tiny">Full projection</a></div>
+          <div class="cutlines compact">${cutlineCards(cut.lines)}</div></section>`
+      : '';
     const cards = lb.teams.map((t) => `<article class="card team" id="team-${esc(t.managerId)}">
       <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${mgrDot(draft, t.managerId)}${esc(t.manager)}</h3><div class="tiny muted">${t.strokes ? `${t.strokes} strokes · ` : ''}${t.strokesComplete ? 'Final' : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
       <div class="tot ${parCls(t.toPar)}">${esc(t.toParDisplay)}</div></div>
@@ -367,7 +376,7 @@ function renderLeaderboard(draft) {
       <tbody>${t.lineup.map((g) => golferRow(g, g.counting ? '' : 'dim')).join('')}
       ${t.bench.filter((b) => !b.usedAsSub).map((g) => golferRow({ ...g, pos: `R${g.round}` }, 'bench-row')).join('')}</tbody></table></div>
     </article>`).join('');
-    $('#lb').outerHTML = `<div id="lb">${standings}<div class="legend tiny">
+    $('#lb').outerHTML = `<div id="lb">${standings}${cutStrip}<div class="legend tiny">
       <span><i class="sw sw-dim"></i>Faded row: doesn't count toward the team score</span>
       <span><i class="sw sw-bench"></i>Gray row: unused backup</span>
       <span><i class="sw sw-pen">&ndash;</i>Missed round: counts as ${lb.settings.penalty} shots</span>
@@ -464,9 +473,18 @@ function showTiebreak(lb, managerId) {
 }
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 
+const pctTxt = (p) => (p > 0 && p < 0.005 ? '<1%' : `${Math.round(p * 100)}%`);
+const bar = (p, cls = '') => `<span class="probbar ${cls}"><i style="width:${Math.max(2, Math.round(p * 100))}%"></i></span>`;
+
+// The cut-line cards, read left to right by score with the likeliest one highlighted.
+function cutlineCards(lines) {
+  const best = lines.reduce((a, b) => (b.pct > a.pct ? b : a), lines[0] || { pct: -1 });
+  return [...lines].sort((a, b) => a.score - b.score).map((l) => `<div class="cutline ${l === best ? 'top' : ''}">
+    <div class="score ${parCls(l.score)}">${esc(fmtPar(l.score))}</div>
+    <div class="pct">${pctTxt(l.pct)}</div>${bar(l.pct)}</div>`).join('');
+}
+
 function renderCut(draft) {
-  const pctTxt = (p) => `${Math.round(p * 100)}%`;
-  const bar = (p, cls = '') => `<span class="probbar ${cls}"><i style="width:${Math.max(2, Math.round(p * 100))}%"></i></span>`;
   app.innerHTML = `<div class="hero"><div><h1>Projected Cut</h1><div class="meta" id="cMeta"></div></div></div><div id="cutBody" class="loading">Working out the cut...</div>`;
   const draw = async () => {
     const c = await api('GET', `/draft/${draft.id}/cut`);
@@ -492,12 +510,8 @@ function renderCut(draft) {
         ${managers}</div>`;
       return;
     }
-    const best = c.lines.reduce((a, b) => (b.pct > a.pct ? b : a), c.lines[0] || { pct: -1 });
-    const ordered = [...c.lines].sort((a, b) => a.score - b.score);
     const lines = `<section class="card pad"><h2 style="margin:0 0 10px">Projected Cutline</h2>
-      <div class="cutlines">${ordered.map((l) => `<div class="cutline ${l === best ? 'top' : ''}">
-        <div class="score ${parCls(l.score)}">${esc(fmtPar(l.score))}</div>
-        <div class="pct">${pctTxt(l.pct)}</div>${bar(l.pct)}</div>`).join('')}</div>
+      <div class="cutlines">${cutlineCards(c.lines)}</div>
       <p class="tiny muted" style="margin:12px 0 0">Our estimate from live scores, run ${c.sims.toLocaleString()} times. The field is scoring ${c.fieldPerHole >= 0 ? '+' : ''}${(c.fieldPerHole * 18).toFixed(1)} per round so far. Golfers are treated as equally skilled from here, so the cut number is firmer than any one golfer's odds.</p></section>`;
     const bubble = c.bubble.length ? `<section class="card"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">On the bubble</h2></div>
       <div class="table-wrap"><table><thead><tr><th>Golfer</th><th class="c">Score</th><th class="c hide-sm">Holes left</th><th class="num">Makes cut</th><th class="hide-sm" style="width:120px"></th></tr></thead><tbody>

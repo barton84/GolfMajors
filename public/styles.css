@@ -232,6 +232,16 @@ table.sc tr.par td { color: var(--muted); }
 .cutline.top { border-color: var(--accent); background: var(--accent-soft); }
 .cutline .score { font-family: var(--head-font); font-size: 2rem; font-weight: 700; line-height: 1; }
 .cutline .pct { font-size: 13px; font-weight: 700; color: var(--muted); margin: 4px 0 8px; }
+/* Compact copy on the Leaderboard */
+.cutstrip { padding-top: 14px; padding-bottom: 14px; }
+.cutstrip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
+.cutstrip-head h2 { margin: 0; font-size: 1.05rem; }
+.cutstrip-head a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+.cutstrip-head a:hover { color: var(--ink); }
+.cutlines.compact { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+.cutlines.compact .cutline { padding: 8px 10px; border-radius: 10px; }
+.cutlines.compact .score { font-size: 1.45rem; }
+.cutlines.compact .pct { font-size: 12px; margin: 2px 0 6px; }
 .probbar { display: block; height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
 .probbar i { display: block; height: 100%; background: var(--brand-2); }
 [data-theme='arena'] .probbar i { background: var(--accent); }
