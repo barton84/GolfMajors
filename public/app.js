@@ -492,8 +492,10 @@ function renderCut(draft) {
         ${managers}</div>`;
       return;
     }
-    const lines = `<section class="card pad"><h2 style="margin:0 0 10px">Where the cut lands</h2>
-      <div class="cutlines">${c.lines.map((l, i) => `<div class="cutline ${i === 0 ? 'top' : ''}">
+    const best = c.lines.reduce((a, b) => (b.pct > a.pct ? b : a), c.lines[0] || { pct: -1 });
+    const ordered = [...c.lines].sort((a, b) => a.score - b.score);
+    const lines = `<section class="card pad"><h2 style="margin:0 0 10px">Projected Cutline</h2>
+      <div class="cutlines">${ordered.map((l) => `<div class="cutline ${l === best ? 'top' : ''}">
         <div class="score ${parCls(l.score)}">${esc(fmtPar(l.score))}</div>
         <div class="pct">${pctTxt(l.pct)}</div>${bar(l.pct)}</div>`).join('')}</div>
       <p class="tiny muted" style="margin:12px 0 0">Our estimate from live scores, run ${c.sims.toLocaleString()} times. The field is scoring ${c.fieldPerHole >= 0 ? '+' : ''}${(c.fieldPerHole * 18).toFixed(1)} per round so far. Golfers are treated as equally skilled from here, so the cut number is firmer than any one golfer's odds.</p></section>`;
