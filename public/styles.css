@@ -211,8 +211,8 @@ table.sc tr.par td { color: var(--muted); }
 .field-table th.sortable { cursor: pointer; user-select: none; }
 .field-table th.sorted { color: var(--ink); }
 .field-table .arr { font-size: 8px; margin-left: 4px; vertical-align: 1px; }
-.field-table tr.owned td { background: color-mix(in srgb, var(--c) 13%, transparent); }
-.field-table tr.owned td:first-child { box-shadow: inset 4px 0 0 var(--c); }
+tr.owned td { background: color-mix(in srgb, var(--c) 13%, transparent); }
+tr.owned td:first-child { box-shadow: inset 4px 0 0 var(--c); }
 .field-table tr.out td { opacity: .7; }
 .field-table td.g { font-weight: 600; }
 .mtag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 5px; white-space: nowrap; }
@@ -323,6 +323,7 @@ table.sc tr.par td { color: var(--muted); }
   .players .list { max-height: 60vh; }
   .mobile-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
   .mobile-tabs .btn { flex: 1; justify-content: center; }
+  .mobile-tabs .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
   .draft-layout[data-show='players'] .board-pane { display: none; }
   .draft-layout[data-show='board'] .players { display: none; }
   .brand span { display: none; }

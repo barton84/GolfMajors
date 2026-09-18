@@ -177,15 +177,16 @@ const mgrName = (draft, id) => draft.managers.find((m) => m.id === id)?.name || 
 function renderDraftRoom(draft) {
   let state = draft;
   let search = '';
-  let show = 'players';
+  // Once the draft is done the player list has nothing left to do, so phones open on the board.
+  let show = draft.status === 'setup' || draft.status === 'drafting' ? 'players' : 'board';
   app.innerHTML = `
     <div class="hero">
       <div><h1>${esc(draft.name)}</h1><div class="meta" id="dMeta"></div></div>
       <div class="row" id="whoami"></div>
     </div>
     <div id="clock"></div>
-    <div class="mobile-tabs"><button class="btn" data-show="players">Players</button><button class="btn" data-show="board">Draft Board</button></div>
-    <div class="draft-layout" data-show="players">
+    <div class="mobile-tabs"><button class="btn ${show === 'board' ? 'on' : ''}" data-show="board">Draft Board</button><button class="btn ${show === 'players' ? 'on' : ''}" data-show="players">Players</button></div>
+    <div class="draft-layout" data-show="${show}">
       <section class="card players">
         <div class="pad" style="padding-bottom:10px">
           <input id="search" type="search" placeholder="Search golfers" style="width:100%" autocomplete="off" />
@@ -196,7 +197,11 @@ function renderDraftRoom(draft) {
       <section class="card board-pane"><div class="table-wrap" id="board"></div></section>
     </div>`;
 
-  $$('.mobile-tabs .btn').forEach((b) => (b.onclick = () => { show = b.dataset.show; $('.draft-layout').dataset.show = show; }));
+  $$('.mobile-tabs .btn').forEach((b) => (b.onclick = () => {
+    show = b.dataset.show;
+    $('.draft-layout').dataset.show = show;
+    $$('.mobile-tabs .btn').forEach((x) => x.classList.toggle('on', x.dataset.show === show));
+  }));
   $('#search').oninput = (e) => { search = e.target.value.toLowerCase(); drawPlayers(); };
   $('#hideTaken').onchange = drawPlayers;
 
@@ -204,7 +209,7 @@ function renderDraftRoom(draft) {
     const m = me(state);
     $('#whoami').innerHTML = m
       ? `<span class="pill good">You are ${esc(mgrName(state, m.managerId))}</span><button class="btn sm" id="notMe">Switch</button>`
-      : `<button class="btn primary" id="iAm">I'm a manager</button>`;
+      : `<button class="btn primary" id="iAm">Manager Login</button>`;
     if ($('#notMe')) $('#notMe').onclick = () => { store.del(`me:${state.id}`); drawAll(); };
     if ($('#iAm')) $('#iAm').onclick = () => identify(state).then(drawAll);
   }
@@ -341,7 +346,7 @@ function golferRow(g, extraCls = '') {
 
 function renderLeaderboard(draft) {
   app.innerHTML = `<div class="hero"><div><h1>${esc(draft.name)}</h1><div class="meta" id="lbMeta"></div></div>
-    <div class="row">${isAdmin() && draft.status !== 'final' ? '<button class="btn sm" id="refresh">Refresh from ESPN</button>' : ''}</div></div>
+    <div class="row">${isAdmin() && draft.status !== 'final' ? '<button class="btn sm" id="refresh">Refresh</button>' : ''}</div></div>
     <div id="lbErr"></div><div id="lb" class="loading">Loading scores...</div>`;
   const draw = async (force) => {
     const [lb, cut] = await Promise.all([
@@ -514,9 +519,25 @@ function renderCut(draft) {
     const lines = `<section class="card pad"><h2 style="margin:0 0 10px">Projected Cutline</h2>
       <div class="cutlines">${cutlineCards(c.lines)}</div>
       <p class="tiny muted" style="margin:12px 0 0">Our estimate from live scores, run ${c.sims.toLocaleString()} times. The field is scoring ${c.fieldPerHole >= 0 ? '+' : ''}${(c.fieldPerHole * 18).toFixed(1)} per round so far. Golfers are treated as equally skilled from here, so the cut number is firmer than any one golfer's odds.</p></section>`;
-    const bubble = c.bubble.length ? `<section class="card"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">On the bubble</h2></div>
-      <div class="table-wrap"><table><thead><tr><th>Golfer</th><th class="c">Score</th><th class="c hide-sm">Holes left</th><th class="num">Makes cut</th><th class="hide-sm" style="width:120px"></th></tr></thead><tbody>
-      ${c.bubble.map((b) => `<tr><td class="g">${esc(b.name)}</td><td class="c ${parCls(b.toPar)}">${esc(fmtPar(b.toPar))}</td><td class="c hide-sm muted">${b.left}</td><td class="num"><b>${pctTxt(b.pct)}</b></td><td class="hide-sm">${bar(b.pct, 'wide')}</td></tr>`).join('')}
+    // Who drafted each bubble golfer, matched on ESPN id so a name spelling never breaks it.
+    const owner = new Map();
+    (c.managers || []).forEach((m) => m.golfers.forEach((g) => {
+      if (g.id) owner.set(String(g.id), m);
+      owner.set(`n:${g.name.toLowerCase()}`, m); // fallback while a cached projection predates the id
+    }));
+    const bubble = c.bubble.length ? `<section class="card"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">On the bubble</h2>
+      <p class="tiny muted" style="margin:4px 0 0">Golfers whose weekend is still in doubt. Drafted ones are tagged with the manager who has them.</p></div>
+      <div class="table-wrap"><table><thead><tr><th>Golfer</th><th class="hide-sm">Manager</th><th class="c">Score</th><th class="c hide-sm">Holes left</th><th class="num">Makes cut</th><th class="hide-sm" style="width:120px"></th></tr></thead><tbody>
+      ${c.bubble.map((b) => {
+        const o = owner.get(String(b.id)) || owner.get(`n:${b.name.toLowerCase()}`);
+        const [bg, fg] = o ? mgrColor(draft, o.managerId) : [];
+        const tag = o ? `<span class="mtag" style="background:${bg};color:${fg}">${esc(o.manager)}</span>` : '';
+        return `<tr class="${o ? 'owned' : ''}" ${o ? `style="--c:${bg}"` : ''}>
+          <td class="g">${esc(b.name)}${o ? `<div class="show-sm" style="margin-top:3px">${tag}</div>` : ''}</td>
+          <td class="hide-sm">${tag}</td>
+          <td class="c ${parCls(b.toPar)}">${esc(fmtPar(b.toPar))}</td><td class="c hide-sm muted">${b.left}</td>
+          <td class="num"><b>${pctTxt(b.pct)}</b></td><td class="hide-sm">${bar(b.pct, 'wide')}</td></tr>`;
+      }).join('')}
       </tbody></table></div></section>` : '';
     $('#cutBody').outerHTML = `<div id="cutBody" class="stack">${lines}${managers}${bubble}</div>`;
   };
