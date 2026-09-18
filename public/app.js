@@ -527,14 +527,14 @@ function renderCut(draft) {
     }));
     const bubble = c.bubble.length ? `<section class="card"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">On the bubble</h2>
       <p class="tiny muted" style="margin:4px 0 0">Golfers whose weekend is still in doubt. Drafted ones are tagged with the manager who has them.</p></div>
-      <div class="table-wrap"><table><thead><tr><th>Golfer</th><th class="hide-sm">Manager</th><th class="c">Score</th><th class="c hide-sm">Holes left</th><th class="num">Makes cut</th><th class="hide-sm" style="width:120px"></th></tr></thead><tbody>
+      <div class="table-wrap"><table class="bubble-table"><thead><tr><th>Golfer</th><th>Manager</th><th class="c">Score</th><th class="c hide-sm">Holes left</th><th class="num">Makes cut</th><th class="hide-sm" style="width:120px"></th></tr></thead><tbody>
       ${c.bubble.map((b) => {
         const o = owner.get(String(b.id)) || owner.get(`n:${b.name.toLowerCase()}`);
         const [bg, fg] = o ? mgrColor(draft, o.managerId) : [];
         const tag = o ? `<span class="mtag" style="background:${bg};color:${fg}">${esc(o.manager)}</span>` : '';
         return `<tr class="${o ? 'owned' : ''}" ${o ? `style="--c:${bg}"` : ''}>
-          <td class="g">${esc(b.name)}${o ? `<div class="show-sm" style="margin-top:3px">${tag}</div>` : ''}</td>
-          <td class="hide-sm">${tag}</td>
+          <td class="g">${esc(b.name)}</td>
+          <td>${tag}</td>
           <td class="c ${parCls(b.toPar)}">${esc(fmtPar(b.toPar))}</td><td class="c hide-sm muted">${b.left}</td>
           <td class="num"><b>${pctTxt(b.pct)}</b></td><td class="hide-sm">${bar(b.pct, 'wide')}</td></tr>`;
       }).join('')}
