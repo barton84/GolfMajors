@@ -365,9 +365,10 @@ function renderLeaderboard(draft) {
 `;
     // Only while the cut is still in play. Once it is decided this drops off and the Cut tab has the result.
     const cutStrip = cut?.available && !cut.final && cut.lines?.length
-      ? `<section class="card pad cutstrip">
-          <div class="cutstrip-head"><h2>Projected Cutline</h2><a href="#/d/${draft.id}/cut" class="tiny">Full projection</a></div>
-          <div class="cutlines compact">${cutlineCards(cut.lines)}</div></section>`
+      ? `<section class="card cutstrip">
+          <h2>Projected Cutline</h2>
+          <div class="cutlines compact">${cutlineCards(cut.lines)}</div>
+          <a href="#/d/${draft.id}/cut" class="tiny">Full projection</a></section>`
       : '';
     const cards = lb.teams.map((t) => `<article class="card team" id="team-${esc(t.managerId)}">
       <div class="team-head"><div class="row" style="gap:10px"><span class="rk">${t.rank}</span><div><h3 style="margin:0">${mgrDot(draft, t.managerId)}${esc(t.manager)}</h3><div class="tiny muted">${t.strokes ? `${t.strokes} strokes · ` : ''}${t.strokesComplete ? 'Final' : `${t.lineup.filter((g) => g.status === 'active').length} of ${t.lineup.length} still playing`}${t.replaced.length ? ` · ${t.replaced.map((r) => `${esc(r.name)} WD before start`).join(', ')}` : ''}</div></div></div>
