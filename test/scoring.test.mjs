@@ -151,3 +151,29 @@ test('live strokes: TOT includes the round in progress, ranking still by to-par'
   assert.ok(t.strokes > 0);
   assert.equal(t.strokesComplete, false);
 });
+
+test('cut projection: line and per-golfer odds are sane', async () => {
+  const { projectCut, holesPlayed } = await import('../lib/cut.mjs');
+  execFileSync('node', [new URL('./make-mock.mjs', import.meta.url).pathname, 'r2']);
+  const mid = parseEspn(JSON.parse(fs.readFileSync(new URL('./mock-espn-r2.json', import.meta.url))), '401811952');
+  const c = projectCut(mid, { top: 65, ties: true, sims: 1500 });
+  assert.equal(c.available, true);
+  assert.equal(c.final, false);
+  const expectedMade = Object.values(c.players).reduce((a, b) => a + b, 0);
+  assert.ok(expectedMade > 64 && expectedMade < 85, `expected ~65-85 through the cut, got ${expectedMade}`);
+  assert.ok(c.lines[0].pct > 0.3);
+  assert.ok(c.lines.reduce((a, l) => a + l.pct, 0) > 0.9);
+  // A golfer far under the projected line is safe; far over is gone
+  const sorted = [...mid.golfers].filter((g) => g.started).sort((a, b) => a.toPar - b.toPar);
+  assert.ok(c.players[sorted[0].espnId] > 0.95);
+  assert.ok(c.players[sorted.at(-1).espnId] < 0.05);
+  // Round 1 complete and 9 holes into round 2 = 27 holes played
+  assert.equal(holesPlayed(mid.golfers.find((g) => g.thru === '9' && g.rounds[0]), 2), 27);
+  assert.equal(holesPlayed(mid.golfers.find((g) => g.rounds[0] && !g.currentStrokes), 2), 18);
+
+  // Once ESPN marks golfers CUT the tab reports the real line instead of a projection
+  const post = parseEspn(JSON.parse(fs.readFileSync(new URL('./mock-espn-post.json', import.meta.url))), '401811952');
+  const done = projectCut(post, { top: 65, ties: true });
+  assert.equal(done.final, true);
+  assert.ok(done.madeCount > 0 && done.madeCount < post.golfers.length);
+});

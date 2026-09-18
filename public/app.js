@@ -102,6 +102,7 @@ function setTabs(draft, active) {
     const base = `#/d/${draft.id}`;
     links.push(['draft', `${base}/draft`, 'Draft Room']);
     links.push(['leaderboard', `${base}/leaderboard`, 'Leaderboard']);
+    links.push(['cut', `${base}/cut`, 'Cut']);
     links.push(['field', `${base}/field`, 'Field']);
     links.push(['sidebet', `${base}/sidebet`, 'Side Bet']);
     links.push(['rules', `${base}/rules`, 'Rules']);
@@ -138,6 +139,7 @@ async function route() {
       setTabs(draft, view);
       if (view === 'draft') return renderDraftRoom(draft);
       if (view === 'leaderboard') return renderLeaderboard(draft);
+      if (view === 'cut') return renderCut(draft);
       if (view === 'field') return renderField(draft);
       if (view === 'sidebet') return renderSideBet(draft);
       if (view === 'rules') return renderRules(draft);
@@ -462,6 +464,49 @@ function showTiebreak(lb, managerId) {
 }
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 
+function renderCut(draft) {
+  const pctTxt = (p) => `${Math.round(p * 100)}%`;
+  const bar = (p, cls = '') => `<span class="probbar ${cls}"><i style="width:${Math.max(2, Math.round(p * 100))}%"></i></span>`;
+  app.innerHTML = `<div class="hero"><div><h1>Projected Cut</h1><div class="meta" id="cMeta"></div></div></div><div id="cutBody" class="loading">Working out the cut...</div>`;
+  const draw = async () => {
+    const c = await api('GET', `/draft/${draft.id}/cut`);
+    const rule = c.rule || draft.settings.cut || { top: 65, ties: true };
+    $('#cMeta').innerHTML = `<span class="pill ${c.final ? '' : 'live'}">${c.final ? 'Cut is final' : 'Projected'}</span>
+      <span class="pill">Top ${rule.top}${rule.ties ? ' and ties' : ''}</span>
+      ${c.fetchedAt ? `<span class="tiny muted">Updated ${new Date(c.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}`;
+    if (!c.available) {
+      $('#cutBody').outerHTML = `<div id="cutBody" class="card pad muted">${esc(c.reason || 'No projection yet.')}</div>`;
+      return;
+    }
+    const mgrRows = (c.managers || []).map((m) => `<tr>
+        <td class="mgr">${mgrDot(draft, m.managerId)}${esc(m.manager)}</td>
+        <td class="num"><b>${m.expected.toFixed(1)}</b><span class="muted tiny"> of ${m.golfers.length}</span></td>
+        <td class="hide-sm"><div class="chips2">${m.golfers.map((g) => `<span class="gchip ${g.pct === null ? 'out' : g.pct >= 0.9 ? 'safe' : g.pct <= 0.1 ? 'gone' : 'bub'}">${esc(g.name.split(' ').slice(-1)[0])}<b>${g.pct === null ? '-' : pctTxt(g.pct)}</b></span>`).join('')}</div></td>
+      </tr>`).join('');
+    const managers = `<section class="card"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">${c.final ? 'Golfers through the cut' : 'Projected to survive the cut'}</h2>
+      <p class="tiny muted" style="margin:4px 0 0">${c.final ? 'Out of each manager\'s 8 playing golfers.' : 'Expected number of each manager\'s 8 playing golfers to make the weekend.'}</p></div>
+      <div class="table-wrap"><table><thead><tr><th>Manager</th><th class="num">${c.final ? 'Made cut' : 'Expected'}</th><th class="hide-sm">Golfers</th></tr></thead><tbody>${mgrRows}</tbody></table></div></section>`;
+    if (c.final) {
+      $('#cutBody').outerHTML = `<div id="cutBody" class="stack">
+        <div class="notice">Cut line: <b>${esc(fmtPar(c.line))}</b> · ${c.madeCount} golfers made the weekend.</div>
+        ${managers}</div>`;
+      return;
+    }
+    const lines = `<section class="card pad"><h2 style="margin:0 0 10px">Where the cut lands</h2>
+      <div class="cutlines">${c.lines.map((l, i) => `<div class="cutline ${i === 0 ? 'top' : ''}">
+        <div class="score ${parCls(l.score)}">${esc(fmtPar(l.score))}</div>
+        <div class="pct">${pctTxt(l.pct)}</div>${bar(l.pct)}</div>`).join('')}</div>
+      <p class="tiny muted" style="margin:12px 0 0">Our estimate from live scores, run ${c.sims.toLocaleString()} times. The field is scoring ${c.fieldPerHole >= 0 ? '+' : ''}${(c.fieldPerHole * 18).toFixed(1)} per round so far. Golfers are treated as equally skilled from here, so the cut number is firmer than any one golfer's odds.</p></section>`;
+    const bubble = c.bubble.length ? `<section class="card"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">On the bubble</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Golfer</th><th class="c">Score</th><th class="c hide-sm">Holes left</th><th class="num">Makes cut</th><th class="hide-sm" style="width:120px"></th></tr></thead><tbody>
+      ${c.bubble.map((b) => `<tr><td class="g">${esc(b.name)}</td><td class="c ${parCls(b.toPar)}">${esc(fmtPar(b.toPar))}</td><td class="c hide-sm muted">${b.left}</td><td class="num"><b>${pctTxt(b.pct)}</b></td><td class="hide-sm">${bar(b.pct, 'wide')}</td></tr>`).join('')}
+      </tbody></table></div></section>` : '';
+    $('#cutBody').outerHTML = `<div id="cutBody" class="stack">${lines}${managers}${bubble}</div>`;
+  };
+  guard(draw);
+  if (draft.status !== 'final') every(() => draw().catch(() => {}), 60_000);
+}
+
 function renderField(draft) {
   let filter = 'all';
   let sort = { col: 'pos', dir: 1 };
@@ -683,6 +728,8 @@ async function renderCreate() {
         <label class="field">Scores that count<input name="counting" type="number" min="1" value="6" /></label>
         <label class="field">Missed round score<input name="penalty" type="number" value="80" /></label>
         <label class="field">Course par (auto if blank)<input name="par" type="number" placeholder="auto" /></label>
+        <label class="field">Cut: top<input name="cutTop" type="number" min="1" value="65" /></label>
+        <label class="field" style="justify-content:flex-end"><span class="row" style="gap:6px"><input name="cutTies" type="checkbox" checked /> and ties</span></label>
       </div>
       <button class="btn primary" style="justify-content:center">Create draft</button>
     </section>
@@ -708,7 +755,7 @@ async function renderCreate() {
         year: f.year.value, major: f.major.value, name: f.name.value || `${f.year.value} ${f.major.value}`, eventInput: f.eventInput.value,
         entryFee: f.entryFee.value, payouts: [0, 1, 2].map((i) => ({ place: f[`place${i}`].value, prize: f[`prize${i}`].value })),
         sideBet: { entry: f.sbEntry.value, payout: f.sbPayout.value },
-        settings: { rounds: f.rounds.value, starters: f.starters.value, counting: f.counting.value, penalty: f.penalty.value, par: f.par.value },
+        settings: { rounds: f.rounds.value, starters: f.starters.value, counting: f.counting.value, penalty: f.penalty.value, par: f.par.value, cut: { top: f.cutTop.value, ties: f.cutTies.checked } },
         managers: managers.filter((m) => m.name.trim()),
       });
       toast('Draft created');
@@ -842,7 +889,9 @@ async function renderManage(id) {
           <div class="grid-form"><label class="field">Name<input name="name" value="${esc(d.name)}" /></label><label class="field">Year<input name="year" type="number" value="${esc(d.year)}" /></label><label class="field">Entry fee<input name="entryFee" value="${esc(d.entryFee || '')}" /></label></div>
           ${(d.payouts || []).map((p, i) => `<div class="grid-form"><label class="field">Place<input name="place${i}" value="${esc(p.place)}" /></label><label class="field">Prize<input name="prize${i}" value="${esc(p.prize)}" /></label></div>`).join('')}
           <div class="grid-form"><label class="field">Side bet entry<input name="sbEntry" value="${esc(d.sideBet?.entry || '')}" /></label><label class="field">Side bet payout<input name="sbPayout" value="${esc(d.sideBet?.payout || '')}" /></label></div>
-          <div class="grid-form"><label class="field">Golfers who play<input name="starters" type="number" value="${d.settings.starters}" /></label><label class="field">Scores that count<input name="counting" type="number" value="${d.settings.counting}" /></label><label class="field">Missed round score<input name="penalty" type="number" value="${d.settings.penalty}" /></label><label class="field">Par<input name="par" type="number" value="${d.settings.par || ''}" placeholder="auto" /></label></div>
+          <div class="grid-form"><label class="field">Golfers who play<input name="starters" type="number" value="${d.settings.starters}" /></label><label class="field">Scores that count<input name="counting" type="number" value="${d.settings.counting}" /></label><label class="field">Missed round score<input name="penalty" type="number" value="${d.settings.penalty}" /></label><label class="field">Par<input name="par" type="number" value="${d.settings.par || ''}" placeholder="auto" /></label>
+          <label class="field">Cut: top<input name="cutTop" type="number" min="1" value="${d.settings.cut?.top ?? 65}" /></label>
+          <label class="field" style="justify-content:flex-end"><span class="row" style="gap:6px"><input name="cutTies" type="checkbox" ${d.settings.cut?.ties !== false ? 'checked' : ''} /> and ties</span></label></div>
           <button class="btn sm primary">Save details</button>
         </form>
       </section>
@@ -977,7 +1026,7 @@ async function renderManage(id) {
         name: f.name.value, year: f.year.value, entryFee: f.entryFee.value,
         payouts: (d.payouts || []).map((_, i) => ({ place: f[`place${i}`].value, prize: f[`prize${i}`].value })),
         sideBet: { entry: f.sbEntry.value, payout: f.sbPayout.value },
-        settings: { rounds: d.settings.rounds, starters: f.starters.value, counting: f.counting.value, penalty: f.penalty.value, par: f.par.value },
+        settings: { rounds: d.settings.rounds, starters: f.starters.value, counting: f.counting.value, penalty: f.penalty.value, par: f.par.value, cut: { top: f.cutTop.value, ties: f.cutTies.checked } },
       }, 'Details saved');
     };
   }
