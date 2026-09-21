@@ -208,9 +208,10 @@ function renderDraftRoom(draft) {
   function drawWho() {
     const m = me(state);
     $('#whoami').innerHTML = m
-      ? `<span class="pill good">You are ${esc(mgrName(state, m.managerId))}</span><button class="btn sm" id="notMe">Switch</button>`
+      ? `<span class="pill good">You are ${esc(mgrName(state, m.managerId))}</span><button class="btn sm" id="chPin">Change PIN</button><button class="btn sm" id="notMe">Switch</button>`
       : `<button class="btn primary" id="iAm">Manager Login</button>`;
     if ($('#notMe')) $('#notMe').onclick = () => { store.del(`me:${state.id}`); drawAll(); };
+    if ($('#chPin')) $('#chPin').onclick = () => changePin(state, m);
     if ($('#iAm')) $('#iAm').onclick = () => identify(state).then(drawAll);
   }
   function drawClock() {
@@ -302,7 +303,7 @@ async function identify(draft) {
     <form method="dialog" class="stack">
       <label class="field">Manager<select name="mid">${draft.managers.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>
       <label class="field">PIN<input name="pin" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="4-digit PIN" /></label>
-      <div class="notice bad" id="pinErr" hidden>That PIN doesn't match.</div>
+      <div class="notice bad" id="pinErr" hidden></div>
       <div class="row" style="justify-content:flex-end"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Continue</button></div>
     </form>`;
   m.showModal();
@@ -313,13 +314,63 @@ async function identify(draft) {
       e.preventDefault();
       const managerId = form.mid.value;
       const pin = form.pin.value.trim();
-      const r = await api('POST', `/draft/${draft.id}/verify-pin`, { managerId, pin }).catch(() => ({ ok: false }));
-      if (!r.ok) { $('#pinErr').hidden = false; return; }
+      const r = await api('POST', `/draft/${draft.id}/verify-pin`, { managerId, pin }).catch((e) => ({ ok: false, error: e.message }));
+      if (!r.ok) {
+        const err = $('#pinErr');
+        err.textContent = r.locked
+          ? 'Too many wrong PINs. You are locked out until the admin unlocks you.'
+          : r.error || (r.left <= 3 ? `That PIN doesn't match. ${r.left} ${r.left === 1 ? 'try' : 'tries'} left before you're locked out.` : "That PIN doesn't match.");
+        err.hidden = false;
+        return;
+      }
       store.set(`me:${draft.id}`, { managerId, pin });
       m.close();
       resolve(true);
     };
   });
+}
+
+// A manager changes their own PIN. It is theirs across every tournament, so saved logins in this
+// browser for other tournaments get the new PIN too.
+function changePin(draft, who) {
+  const m = $('#modal');
+  const mgr = draft.managers.find((x) => x.id === who.managerId);
+  const hasPin = mgr?.hasPin;
+  m.innerHTML = `<h3>Change your PIN</h3>
+    <p class="tiny muted" style="margin:0 0 10px">Your PIN works for every tournament, not just this one.</p>
+    <form method="dialog" class="stack">
+      ${hasPin ? '<label class="field">Current PIN<input name="cur" inputmode="numeric" autocomplete="current-password" maxlength="8" required /></label>' : '<p class="tiny muted" style="margin:0">You don\'t have a PIN yet. Set one so nobody else can pick for you.</p>'}
+      <label class="field">New PIN<input name="n1" inputmode="numeric" autocomplete="new-password" maxlength="4" pattern="\\d{4}" placeholder="4 digits" required /></label>
+      <label class="field">New PIN again<input name="n2" inputmode="numeric" autocomplete="new-password" maxlength="4" pattern="\\d{4}" placeholder="4 digits" required /></label>
+      <div class="notice bad" id="cpErr" hidden></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save PIN</button></div>
+    </form>`;
+  m.showModal();
+  const form = $('form', m);
+  const showErr = (t) => { $('#cpErr').textContent = t; $('#cpErr').hidden = false; };
+  form.onsubmit = async (e) => {
+    if (e.submitter?.value !== 'ok') return m.close();
+    e.preventDefault();
+    const cur = hasPin ? form.cur.value.trim() : '';
+    const n1 = form.n1.value.trim();
+    if (!/^\d{4}$/.test(n1)) return showErr('Your new PIN must be exactly 4 digits.');
+    if (n1 !== form.n2.value.trim()) return showErr("The two new PINs don't match.");
+    try {
+      await api('POST', `/draft/${draft.id}/change-pin`, { managerId: who.managerId, pin: cur, newPin: n1 });
+    } catch (err) { return showErr(err.message); }
+    // Update saved logins in this browser: this tournament, plus any other that used the old PIN.
+    store.set(`me:${draft.id}`, { managerId: who.managerId, pin: n1 });
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k.startsWith('me:') || k === `me:${draft.id}`) continue;
+        const v = store.get(k);
+        if (v && (v.pin || '') === (who.pin || '')) store.set(k, { ...v, pin: n1 });
+      }
+    } catch {}
+    m.close();
+    toast('PIN changed. Use it for every tournament.');
+  };
 }
 
 // ---------- leaderboard ----------
@@ -719,15 +770,195 @@ async function renderAdminHome() {
     ${index.drafts.map((d) => `<tr><td><b>${esc(d.name)}</b>${d.id === index.currentId ? ' <span class="pill good">Home page</span>' : ''}</td><td>${statusLabel[d.status]}</td>
       <td class="num">${d.id === index.currentId ? '' : `<button class="btn sm" data-current="${esc(d.id)}">Show on home page</button>`}</td>
       <td class="num"><a class="btn sm primary" href="#/admin/${esc(d.id)}">Manage</a></td></tr>`).join('') || '<tr><td class="muted">No drafts yet.</td></tr>'}
-    </tbody></table></div></div>`;
+    </tbody></table></div></div>
+    <div class="admin-grid" style="margin-top:16px">
+      <section class="card" id="peopleCard"><div class="pad" style="padding-bottom:6px"><h2 style="margin:0">Managers and PINs</h2>
+        <p class="tiny muted" style="margin:4px 0 0">A PIN belongs to the person and works in every tournament. Managers can change their own from the Draft Room. Too many wrong tries locks them out until you unlock them here.</p></div>
+        <div id="peopleBody" class="loading" style="padding:24px 0">Loading...</div></section>
+      <section class="card pad stack" id="backupCard"><h2 style="margin:0">Backup</h2><div id="backupBody" class="muted small">Loading...</div></section>
+    </div>`;
   $('#logout').onclick = () => { store.del('adminToken'); route(); };
   $$('[data-current]').forEach((b) => (b.onclick = () => guard(async () => { await api('POST', '/admin/current', { id: b.dataset.current }); renderAdminHome(); })));
+  drawPeople().catch((e) => { $('#peopleBody').outerHTML = `<div class="pad notice bad">${esc(e.message)}</div>`; });
+  drawBackup().catch((e) => { $('#backupBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; });
+}
+
+const ago = (iso) => {
+  if (!iso) return 'never';
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} minutes ago`;
+  if (s < 86400 * 1.5) return `${Math.round(s / 3600)} hours ago`;
+  return `${Math.round(s / 86400)} days ago`;
+};
+
+async function drawPeople() {
+  const { people, maxTries } = await api('GET', '/admin/people');
+  const status = (p) => (p.locked ? '<span class="pill bad">Locked</span>' : p.failed ? `<span class="pill">${p.failed} wrong ${p.failed === 1 ? 'try' : 'tries'}</span>` : '');
+  const sub = (p) => [`${p.tournaments.length} ${p.tournaments.length === 1 ? 'tournament' : 'tournaments'}`, p.hasPin ? 'PIN set' : 'no PIN', p.setBy === 'manager' && p.updatedAt ? `changed own PIN ${ago(p.updatedAt)}` : ''].filter(Boolean).join(' · ');
+  $('#peopleBody').outerHTML = `<div id="peopleBody"><div class="people-list">
+    ${people.map((p) => `<div class="person ${p.locked ? 'locked' : ''}">
+      <div class="pinfo"><div class="row" style="gap:8px"><b>${esc(p.name)}</b>${status(p)}</div><div class="tiny muted">${esc(sub(p))}</div></div>
+      <div class="pact">
+        ${p.locked || p.failed ? `<button class="btn sm accent" data-unlock="${esc(p.name)}">Unlock</button>` : ''}
+        <button class="btn sm" data-setpin="${esc(p.name)}">${p.hasPin ? 'Reset PIN' : 'Set PIN'}</button>
+        ${p.hasPin ? `<button class="btn sm danger" data-clearpin="${esc(p.name)}" title="Remove PIN">Clear</button>` : ''}
+      </div></div>`).join('') || '<div class="person muted">No managers yet.</div>'}
+    </div><p class="tiny muted" style="margin:0;padding:10px 16px 14px">Locks after ${maxTries} wrong tries in a row. A correct PIN resets the count.</p></div>`;
+  $$('[data-unlock]').forEach((b) => (b.onclick = () => guard(async () => {
+    await api('POST', '/admin/people', { name: b.dataset.unlock, action: 'unlock' });
+    toast(`${b.dataset.unlock} is unlocked`);
+    drawPeople();
+  })));
+  $$('[data-clearpin]').forEach((b) => (b.onclick = () => guard(async () => {
+    if (!(await confirmBox(`Remove ${b.dataset.clearpin}'s PIN?`, 'Anyone could then pick for them until a new PIN is set. This applies to every tournament.', 'Remove PIN'))) return;
+    await api('POST', '/admin/people', { name: b.dataset.clearpin, action: 'clear' });
+    toast('PIN removed');
+    drawPeople();
+  })));
+  $$('[data-setpin]').forEach((b) => (b.onclick = () => adminSetPin(b.dataset.setpin)));
+}
+
+function adminSetPin(name) {
+  const m = $('#modal');
+  m.innerHTML = `<h3>New PIN for ${esc(name)}</h3>
+    <p class="tiny muted" style="margin:0 0 10px">Works in every tournament and unlocks them if they were locked out.</p>
+    <form method="dialog" class="stack">
+      <label class="field">PIN<input name="pin" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off" required /></label>
+      <div class="notice bad" id="spErr" hidden></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div>
+    </form>`;
+  m.showModal();
+  const form = $('form', m);
+  form.onsubmit = async (e) => {
+    if (e.submitter?.value !== 'ok') return m.close();
+    e.preventDefault();
+    const pin = form.pin.value.trim();
+    if (!/^\d{4}$/.test(pin)) { $('#spErr').textContent = 'PIN must be exactly 4 digits.'; $('#spErr').hidden = false; return; }
+    try { await api('POST', '/admin/people', { name, action: 'set', pin }); }
+    catch (err) { $('#spErr').textContent = err.message; $('#spErr').hidden = false; return; }
+    m.close();
+    toast(`${name}'s PIN is set`);
+    drawPeople();
+  };
+}
+
+async function drawBackup() {
+  const st = await api('GET', '/admin/backup/status');
+  const newest = Math.max(0, ...index.drafts.map((d) => +new Date(d.updatedAt || d.createdAt || 0)));
+  const stale = !st.lastBackupAt || newest > +new Date(st.lastBackupAt);
+  const last = st.snapshots[0];
+  $('#backupBody').outerHTML = `<div id="backupBody" class="stack">
+    <div class="${stale ? 'notice' : 'small muted'}">${st.lastBackupAt ? `Last backup: <b>${ago(st.lastBackupAt)}</b>.` : '<b>No backup yet.</b>'}${stale && st.lastBackupAt ? ' There are changes since then.' : ''}</div>
+    <p class="small muted" style="margin:0">Downloads every tournament, past winner, name match, and manager PIN as one file. Save it somewhere safe, like Google Drive. A good time is right after you finalize a tournament.</p>
+    <div class="row"><button class="btn primary" id="dlBackup">Download backup</button>
+      <button class="btn" id="restoreBtn">Restore from a file</button><input type="file" id="restoreFile" accept=".json,application/json" hidden /></div>
+    ${last ? `<div class="small muted" style="border-top:1px solid var(--line);padding-top:10px">Last restore: ${ago(last.at)}. The data from just before it was saved automatically.
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="undoRestore">Undo last restore</button><button class="btn sm" data-snap="${esc(last.id)}">Download that copy</button></div></div>` : ''}
+  </div>`;
+  $('#dlBackup').onclick = () => guard(async () => {
+    const data = await api('GET', '/admin/backup');
+    saveJson(data, `golf-draft-backup-${data.createdAt.slice(0, 10)}.json`);
+    toast(`Backup downloaded: ${data.drafts.length} ${data.drafts.length === 1 ? 'tournament' : 'tournaments'}`);
+    drawBackup();
+  });
+  $('#restoreBtn').onclick = () => $('#restoreFile').click();
+  $('#restoreFile').onchange = (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      let data;
+      try { data = JSON.parse(r.result); } catch { return toast("That file isn't a backup (it's not valid JSON)."); }
+      if (data?.app !== 'golf-draft' || !Array.isArray(data.drafts)) return toast("That file isn't a Fantasy Golf Draft backup.");
+      restorePreview(data, f.name);
+    };
+    r.readAsText(f);
+  };
+  if ($('#undoRestore')) $('#undoRestore').onclick = () => guard(async () => {
+    if (!(await confirmBox('Undo the last restore?', 'Puts everything back the way it was just before that restore. Anything changed since then will be replaced.', 'Undo restore'))) return;
+    await api('POST', '/admin/restore/undo', {});
+    toast('Restore undone');
+    renderAdminHome();
+  });
+  $$('[data-snap]').forEach((b) => (b.onclick = () => guard(async () => {
+    const data = await api('GET', `/admin/snapshot/${encodeURIComponent(b.dataset.snap)}`);
+    saveJson(data, `golf-draft-before-restore-${data.createdAt.slice(0, 10)}.json`);
+  })));
+}
+
+function saveJson(data, filename) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function restorePreview(data, fileName) {
+  const here = new Set(index.drafts.map((d) => d.id));
+  const rows = data.drafts.map((d) => ({ name: d.name, exists: here.has(d.id), status: d.status }))
+    .sort((a, b) => Number(a.exists) - Number(b.exists) || a.name.localeCompare(b.name));
+  const newCount = rows.filter((r) => !r.exists).length;
+  const extra = index.drafts.filter((d) => !data.drafts.some((x) => x.id === d.id));
+  const m = $('#modal');
+  m.classList.add('wide');
+  m.onclose = () => m.classList.remove('wide');
+  m.innerHTML = `<h3 style="margin:0">Restore from backup</h3>
+    <p class="tiny muted" style="margin:4px 0 12px">${esc(fileName)} · made ${esc(new Date(data.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}</p>
+    <div class="restore-counts">
+      <div><b>${data.drafts.length}</b><span>tournaments</span></div>
+      <div><b>${Array.isArray(data.winners) ? data.winners.length : '-'}</b><span>past winners</span></div>
+      <div><b>${Object.keys(data.people || {}).length}</b><span>manager PINs</span></div>
+      <div><b>${Object.keys(data.aliases || {}).length}</b><span>name matches</span></div>
+    </div>
+    <div class="restore-list">${rows.map((r) => `<div><span>${esc(r.name)}</span>${r.exists ? '<span class="tiny muted">Already here</span>' : '<span class="pill good">New</span>'}</div>`).join('')}</div>
+    <form method="dialog" class="stack" style="margin-top:14px">
+      <label class="restore-mode"><input type="radio" name="mode" value="merge" checked /><div><b>Add what's missing</b> (recommended)<div class="tiny muted">${newCount ? `Brings back ${newCount} ${newCount === 1 ? 'tournament' : 'tournaments'}.` : 'Every tournament in the file is already here.'} Nothing already in the app is changed. Current PINs are kept.</div></div></label>
+      <label class="restore-mode danger"><input type="radio" name="mode" value="replace" /><div><b>Replace everything</b><div class="tiny muted">Makes the app match this file exactly.${extra.length ? ` Removes ${extra.length} ${extra.length === 1 ? 'tournament' : 'tournaments'} not in the file: ${extra.map((d) => esc(d.name)).join(', ')}.` : ''} PINs go back to what they were when the backup was made.</div></div></label>
+      <label class="field" id="typeWrap" hidden>Type REPLACE to confirm<input name="confirm" autocomplete="off" /></label>
+      <p class="tiny muted" style="margin:0">Your current data is saved automatically first, so you can undo this.</p>
+      <div class="notice bad" id="rsErr" hidden></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok" id="rsGo">Restore</button></div>
+    </form>`;
+  m.showModal();
+  const form = $('form', m);
+  form.onchange = () => {
+    const replace = form.mode.value === 'replace';
+    $('#typeWrap').hidden = !replace;
+    $('#rsGo').className = `btn ${replace ? 'danger' : 'primary'}`;
+  };
+  form.onsubmit = async (e) => {
+    if (e.submitter?.value !== 'ok') return m.close();
+    e.preventDefault();
+    const mode = form.mode.value;
+    if (mode === 'replace' && form.confirm.value.trim().toUpperCase() !== 'REPLACE') {
+      $('#rsErr').textContent = 'Type REPLACE to confirm.';
+      $('#rsErr').hidden = false;
+      return;
+    }
+    $('#rsGo').disabled = true;
+    try {
+      const r = await api('POST', '/admin/restore', { backup: data, mode });
+      m.close();
+      toast(mode === 'merge'
+        ? (r.added.length ? `Restored ${r.added.length} ${r.added.length === 1 ? 'tournament' : 'tournaments'}` : 'Nothing was missing. Everything is already here.')
+        : 'Restored. The app now matches the backup.', 4000);
+      renderAdminHome();
+    } catch (err) {
+      $('#rsErr').textContent = err.message;
+      $('#rsErr').hidden = false;
+      $('#rsGo').disabled = false;
+    }
+  };
 }
 
 function managerRows(list) {
   return list.map((m, i) => `<div class="mgr-row" data-i="${i}">
     <input name="mname" placeholder="Manager ${i + 1}" value="${esc(m.name || '')}" />
-    <input name="mpin" placeholder="${m.hasPin ? 'PIN set' : 'PIN'}" inputmode="numeric" maxlength="8" value="" />
+    <input name="mpin" placeholder="${m.hasPin ? 'PIN set' : 'PIN'}" inputmode="numeric" maxlength="4" value="" title="4 digits. Leave blank to keep their current PIN." />
     <button type="button" class="btn sm danger" data-rm="${i}" title="Remove">&times;</button></div>`).join('');
 }
 
@@ -736,8 +967,8 @@ async function renderCreate() {
   const year = new Date().getFullYear();
   let managers = Array.from({ length: 8 }, () => ({ name: '' }));
   const lastDraft = index.drafts[0] ? await api('GET', `/draft/${index.drafts[0].id}`).catch(() => null) : null;
-  if (lastDraft) managers = lastDraft.managers.map((m) => ({ name: m.name }));
-  app.innerHTML = `<div class="hero"><div><h1>Create a new draft</h1><p class="muted">${lastDraft ? `Managers are copied from ${esc(lastDraft.name)}. Set new PINs or leave them blank.` : ''}</p></div></div>
+  if (lastDraft) managers = lastDraft.managers.map((m) => ({ name: m.name, hasPin: m.hasPin }));
+  app.innerHTML = `<div class="hero"><div><h1>Create a new draft</h1><p class="muted">${lastDraft ? `Managers are copied from ${esc(lastDraft.name)}. PINs follow each person, so leave them blank to keep their current one.` : ''}</p></div></div>
   <form id="create" class="admin-grid">
     <section class="card pad stack"><h2>Tournament</h2>
       <div class="grid-form">
@@ -856,7 +1087,7 @@ async function renderManage(id) {
       </section>
 
       <section class="card pad stack"><h2>2. Managers and PINs</h2>
-        <p class="tiny muted">Leave PIN blank to keep the current one.${locked ? ' Managers cannot be added or removed after picks are made.' : ''}</p>
+        <p class="tiny muted">Leave PIN blank to keep the current one. A PIN typed here changes it for that person in every tournament. Unlock or clear PINs from the Admin home page.${locked ? ' Managers cannot be added or removed after picks are made.' : ''}</p>
         <div id="mgrs" class="stack">${managerRows(d.managers)}</div>
         <div class="row">${locked ? '' : '<button class="btn sm" id="addMgr">Add manager</button>'}<button class="btn sm primary" id="saveMgrs">Save managers</button></div>
       </section>

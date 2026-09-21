@@ -333,3 +333,24 @@ tr.owned td:first-child { box-shadow: inset 4px 0 0 var(--c); }
   .team table .hide-sm { display: none; }
   .mgr-row { grid-template-columns: 1fr 90px auto; }
 }
+
+/* Admin: managers, PINs, backup */
+.pill.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.people-list { border-top: 1px solid var(--line); margin-top: 10px; }
+.person { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.person.locked { background: color-mix(in srgb, var(--bad) 7%, transparent); box-shadow: inset 4px 0 0 var(--bad); }
+.pinfo { min-width: 0; }
+.pact { display: flex; gap: 6px; flex-wrap: wrap; }
+#rsGo.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.restore-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.restore-counts > div { border: 1px solid var(--line); border-radius: 10px; padding: 8px; text-align: center; background: var(--bg-2); }
+.restore-counts b { display: block; font-size: 1.3rem; }
+.restore-counts span { font-size: 11.5px; color: var(--muted); }
+.restore-list { margin-top: 10px; max-height: 190px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+.restore-list > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.restore-list > div:last-child { border-bottom: 0; }
+.restore-mode { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.restore-mode input { margin-top: 3px; }
+.restore-mode:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.restore-mode.danger:has(input:checked) { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, transparent); }
+@media (max-width: 520px) { .restore-counts { grid-template-columns: repeat(2, 1fr); } }
