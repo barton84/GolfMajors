@@ -82,9 +82,23 @@ try { const t = localStorage.getItem('theme'); applyTheme(t ? JSON.parse(t) : 'g
 
 // ---------- routing ----------
 let index = { currentId: null, drafts: [] };
+// Polling pauses while the tab is hidden (phone locked, other tab in front) and catches up the
+// moment it's visible again, so a phone left on the counter isn't calling the server all day.
 let timers = [];
-const clearTimers = () => { timers.forEach(clearInterval); timers = []; };
-const every = (fn, ms) => timers.push(setInterval(fn, ms));
+const clearTimers = () => { timers.forEach((t) => clearInterval(t.id)); timers = []; };
+const every = (fn, ms) => {
+  const t = { fn, ms, last: Date.now() };
+  t.id = setInterval(() => {
+    if (document.hidden) return;
+    t.last = Date.now();
+    fn();
+  }, ms);
+  timers.push(t);
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  for (const t of timers) if (Date.now() - t.last >= t.ms) { t.last = Date.now(); t.fn(); }
+});
 
 async function loadIndex() {
   index = await api('GET', '/drafts').catch(() => ({ currentId: null, drafts: [] }));
@@ -177,6 +191,11 @@ const mgrName = (draft, id) => draft.managers.find((m) => m.id === id)?.name || 
 function renderDraftRoom(draft) {
   let state = draft;
   let search = '';
+  // Watchlist: the logged-in manager's starred golfers, in their order. null until loaded.
+  let watch = null;
+  let watchFor = null;
+  let view = 'all';
+  const adminLists = {}; // managerId -> { pick, keys } for picking on someone's behalf
   // Once the draft is done the player list has nothing left to do, so phones open on the board.
   let show = draft.status === 'setup' || draft.status === 'drafting' ? 'players' : 'board';
   app.innerHTML = `
@@ -189,7 +208,8 @@ function renderDraftRoom(draft) {
     <div class="draft-layout" data-show="${show}">
       <section class="card players">
         <div class="pad" style="padding-bottom:10px">
-          <input id="search" type="search" placeholder="Search golfers" style="width:100%" autocomplete="off" />
+          <div class="seg" id="viewSeg"><button type="button" data-view="all" class="on">All golfers</button><button type="button" data-view="mine">My list <span id="watchCount"></span></button></div>
+          <input id="search" type="search" placeholder="Search golfers" style="width:100%;margin-top:10px" autocomplete="off" />
           <div class="row between tiny muted" style="margin-top:8px"><span id="availCount"></span><label><input type="checkbox" id="hideTaken" checked /> Hide drafted</label></div>
         </div>
         <div class="list" id="plist"></div>
@@ -203,6 +223,59 @@ function renderDraftRoom(draft) {
     $$('.mobile-tabs .btn').forEach((x) => x.classList.toggle('on', x.dataset.show === show));
   }));
   $('#search').oninput = (e) => { search = e.target.value.toLowerCase(); drawPlayers(); };
+  $$('#viewSeg button').forEach((b) => (b.onclick = () => {
+    view = b.dataset.view;
+    $$('#viewSeg button').forEach((x) => x.classList.toggle('on', x === b));
+    drawPlayers();
+  }));
+
+  async function loadWatch() {
+    const m = me(state);
+    if (!m) { watch = null; watchFor = null; return; }
+    if (watchFor === m.managerId && watch) return;
+    watchFor = m.managerId;
+    try {
+      watch = (await api('POST', `/draft/${state.id}/watchlist`, { managerId: m.managerId, pin: m.pin })).keys;
+    } catch (e) {
+      watch = [];
+      toast(e.message);
+    }
+    drawPlayers();
+    drawClock();
+  }
+  let saveTimer;
+  function saveWatch() {
+    clearTimeout(saveTimer);
+    const m = me(state);
+    if (!m) return;
+    saveTimer = setTimeout(() => {
+      api('POST', `/draft/${state.id}/watchlist`, { managerId: m.managerId, pin: m.pin, keys: watch }).catch((e) => toast(`Couldn't save your list: ${e.message}`));
+    }, 400);
+  }
+  function toggleWatch(key) {
+    if (!watch) return;
+    const i = watch.indexOf(key);
+    if (i >= 0) watch.splice(i, 1);
+    else watch.push(key);
+    saveWatch();
+    drawPlayers();
+    drawClock();
+  }
+  function moveWatch(key, dir) {
+    const i = watch.indexOf(key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= watch.length) return;
+    [watch[i], watch[j]] = [watch[j], watch[i]];
+    saveWatch();
+    drawPlayers();
+    drawClock();
+  }
+  // First golfer on a list nobody has drafted yet
+  const topAvailable = (keys) => {
+    const taken = new Set(state.picks.map((p) => p.key));
+    const k = (keys || []).find((x) => !taken.has(x));
+    return k ? state.field.find((g) => g.key === k) : null;
+  };
   $('#hideTaken').onchange = drawPlayers;
 
   function drawWho() {
@@ -210,7 +283,7 @@ function renderDraftRoom(draft) {
     $('#whoami').innerHTML = m
       ? `<span class="pill good">You are ${esc(mgrName(state, m.managerId))}</span><button class="btn sm" id="chPin">Change PIN</button><button class="btn sm" id="notMe">Switch</button>`
       : `<button class="btn primary" id="iAm">Manager Login</button>`;
-    if ($('#notMe')) $('#notMe').onclick = () => { store.del(`me:${state.id}`); drawAll(); };
+    if ($('#notMe')) $('#notMe').onclick = () => { store.del(`me:${state.id}`); watch = null; watchFor = null; drawAll(); };
     if ($('#chPin')) $('#chPin').onclick = () => changePin(state, m);
     if ($('#iAm')) $('#iAm').onclick = () => identify(state).then(drawAll);
   }
@@ -224,8 +297,25 @@ function renderDraftRoom(draft) {
       el.innerHTML = `<div class="clock"><div><div class="big">Draft hasn't started</div><div class="small">The admin will open the draft when everyone is ready. This page updates on its own.</div></div></div>`;
     } else if (c) {
       const mine = m && m.managerId === c.managerId;
+      // One tap from the top of a list: your own when it's your turn, or (admin) the list of whoever is up.
+      let quick = '';
+      if (mine && watch) {
+        const g = topAvailable(watch);
+        quick = g
+          ? `<div class="quick"><span class="small">Top of your list</span><button class="btn accent" data-quick="${esc(g.key)}">Draft ${esc(g.name)}</button></div>`
+          : watch.length ? '<div class="quick small">Everyone on your list is gone.</div>' : '';
+      } else if (!mine && isAdmin()) {
+        const cached = adminLists[c.managerId];
+        if (!cached || cached.pick !== c.pick) {
+          adminLists[c.managerId] = { pick: c.pick, keys: null };
+          api('GET', `/admin/draft/${state.id}/watchlist/${c.managerId}`).then((r) => { adminLists[c.managerId].keys = r.keys; drawClock(); }).catch(() => {});
+        }
+        const g = cached?.keys ? topAvailable(cached.keys) : null;
+        if (g) quick = `<div class="quick"><span class="small">Top of ${esc(mgrName(state, c.managerId))}'s list</span><button class="btn accent" data-quick="${esc(g.key)}">Pick ${esc(g.name)} for them</button></div>`;
+      }
       el.innerHTML = `<div class="clock ${mine ? 'me' : ''}"><div><div class="small">Round ${c.round}, pick ${c.pick}${c.round > state.settings.starters ? ' (substitute round)' : ''}</div><div class="big">${mine ? "You're on the clock" : `On the clock: ${esc(mgrName(state, c.managerId))}`}</div></div>
-        ${isAdmin() ? `<button class="btn sm" id="undo" style="background:rgba(255,255,255,.15);color:inherit;border-color:rgba(255,255,255,.4)">Undo last pick</button>` : ''}</div>`;
+        <div class="row" style="gap:8px">${quick}${isAdmin() ? `<button class="btn sm" id="undo" style="background:rgba(255,255,255,.15);color:inherit;border-color:rgba(255,255,255,.4)">Undo last pick</button>` : ''}</div></div>`;
+      $$('[data-quick]', el).forEach((b) => (b.onclick = () => pick(b.dataset.quick)));
       if ($('#undo')) $('#undo').onclick = () => guard(async () => { if (await confirmBox('Undo last pick?', 'This removes the most recent pick.', 'Undo')) { state = await api('POST', `/admin/draft/${state.id}/undo`); drawAll(); } });
     } else {
       el.innerHTML = `<div class="clock"><div><div class="big">The draft is complete</div><div class="small">Good luck, everyone.</div></div><a class="btn accent" href="#/d/${state.id}/leaderboard">View leaderboard</a></div>`;
@@ -237,19 +327,50 @@ function renderDraftRoom(draft) {
     const c = state.onClock;
     const m = me(state);
     const canPick = c && (isAdmin() || (m && m.managerId === c.managerId));
-    const list = state.field.filter((g) => (!hide || !taken.has(g.key)) && (!search || g.name.toLowerCase().includes(search)));
+    const starred = new Set(watch || []);
+    const canStar = !!m && !!watch && state.status !== 'final';
+    const avail = (watch || []).filter((k) => !taken.has(k)).length;
+    $('#watchCount').textContent = watch && watch.length ? `(${avail})` : '';
     $('#availCount').textContent = `${state.field.length - taken.size} available`;
-    $('#plist').innerHTML = list.length
-      ? list.map((g, i) => {
-          const t = taken.get(g.key);
-          return `<div class="player">
-            <span class="nm">${esc(g.name)}${g.teeTime ? `<div class="tiny muted">${esc(fmtTee(g.teeTime))}</div>` : ''}</span>
-            ${state.showSalaries !== false && g.salary ? `<span class="sal">${fmtSalary(g.salary)}</span>` : ''}
-            ${t ? `<span class="tiny muted">${esc(mgrName(state, t.managerId))} R${t.round}</span>` : `<button class="btn sm ${canPick ? 'primary' : ''}" data-pick="${esc(g.key)}" ${canPick ? '' : 'disabled'}>Draft</button>`}
-          </div>`;
-        }).join('')
-      : `<div class="pad muted">${state.field.length ? 'No golfers match.' : 'The field has not been loaded yet.'}</div>`;
-    $$('[data-pick]').forEach((b) => (b.onclick = () => pick(b.dataset.pick)));
+    const matches = (g) => (!hide || !taken.has(g.key)) && (!search || g.name.toLowerCase().includes(search));
+    const star = (g) => (canStar ? `<button type="button" class="star ${starred.has(g.key) ? 'on' : ''}" data-star="${esc(g.key)}" title="${starred.has(g.key) ? 'Remove from my list' : 'Add to my list'}" aria-label="${starred.has(g.key) ? 'Remove from my list' : 'Add to my list'}">${starred.has(g.key) ? '&#9733;' : '&#9734;'}</button>` : '');
+    const action = (g) => {
+      const t = taken.get(g.key);
+      return t ? `<span class="tiny muted">${esc(mgrName(state, t.managerId))} R${t.round}</span>` : `<button class="btn sm ${canPick ? 'primary' : ''}" data-pick="${esc(g.key)}" ${canPick ? '' : 'disabled'}>Draft</button>`;
+    };
+    const info = (g) => `<span class="nm">${esc(g.name)}${g.teeTime ? `<div class="tiny muted">${esc(fmtTee(g.teeTime))}</div>` : ''}</span>
+      ${state.showSalaries !== false && g.salary ? `<span class="sal">${fmtSalary(g.salary)}</span>` : ''}`;
+
+    if (view === 'mine') {
+      if (!m) {
+        $('#plist').innerHTML = `<div class="pad muted small">Log in as a manager to build your list. Star golfers you want, put them in order, and when you're on the clock the top one is a single tap away. Nobody else can see it.</div>`;
+        return;
+      }
+      if (!watch) { $('#plist').innerHTML = '<div class="pad muted small">Loading your list...</div>'; return; }
+      const rows = watch.map((k) => state.field.find((g) => g.key === k)).filter(Boolean).filter(matches);
+      let rank = 0;
+      $('#plist').innerHTML = rows.length
+        ? rows.map((g) => {
+            const t = taken.has(g.key);
+            const i = watch.indexOf(g.key);
+            return `<div class="player watch-row ${t ? 'gone' : ''}">
+              <span class="wrank">${t ? '' : ++rank}</span>
+              ${info(g)}
+              <span class="reorder"><button type="button" data-up="${esc(g.key)}" ${i === 0 ? 'disabled' : ''} aria-label="Move up">&#9650;</button><button type="button" data-down="${esc(g.key)}" ${i === watch.length - 1 ? 'disabled' : ''} aria-label="Move down">&#9660;</button></span>
+              ${star(g)}${action(g)}
+            </div>`;
+          }).join('')
+        : `<div class="pad muted small">${watch.length ? 'Everyone on your list has been drafted. Uncheck Hide drafted to see them.' : 'Your list is empty. Tap the star next to any golfer on All golfers to add him. Only you can see your list.'}</div>`;
+    } else {
+      const list = state.field.filter(matches);
+      $('#plist').innerHTML = list.length
+        ? list.map((g) => `<div class="player">${star(g)}${info(g)}${action(g)}</div>`).join('')
+        : `<div class="pad muted">${state.field.length ? 'No golfers match.' : 'The field has not been loaded yet.'}</div>`;
+    }
+    $$('#plist [data-pick]').forEach((b) => (b.onclick = () => pick(b.dataset.pick)));
+    $$('#plist [data-star]').forEach((b) => (b.onclick = () => toggleWatch(b.dataset.star)));
+    $$('#plist [data-up]').forEach((b) => (b.onclick = () => moveWatch(b.dataset.up, -1)));
+    $$('#plist [data-down]').forEach((b) => (b.onclick = () => moveWatch(b.dataset.down, 1)));
   }
   function drawBoard() {
     const n = state.order.length;
@@ -270,7 +391,7 @@ function renderDraftRoom(draft) {
     }
     $('#board').innerHTML = html + '</tbody></table>';
   }
-  function drawAll() { drawWho(); drawClock(); drawPlayers(); drawBoard(); }
+  function drawAll() { drawWho(); drawClock(); drawPlayers(); drawBoard(); loadWatch(); }
 
   async function pick(key) {
     const g = state.field.find((x) => x.key === key);
@@ -413,11 +534,20 @@ function renderLeaderboard(draft) {
     $('#lbErr').innerHTML = lb.error ? `<div class="notice bad" style="margin-bottom:12px">${esc(lb.error)}</div>` : '';
     if (!draft.picks.length) { $('#lb').outerHTML = '<div id="lb" class="card pad muted">No picks yet. Scores show up here after the draft.</div>'; return; }
     const started = lb.final || (state && state !== 'pre');
-    const standings = `<div class="card"><div class="table-wrap"><table class="standings">
-      <thead><tr><th>Pos</th><th>Manager</th><th class="num">To par</th><th class="num">Strokes</th><th class="num hide-sm">Pick</th></tr></thead><tbody>
+    // Win chance columns appear once there's enough golf to simulate, and drop off when it's over.
+    const wp = !lb.final && lb.winProb?.available ? lb.winProb : null;
+    const bestWin = wp ? Math.max(...Object.values(wp.teams).map((x) => x.win)) : 0;
+    const wpCells = (t) => {
+      if (!wp) return '';
+      const x = wp.teams[t.managerId] || { win: 0, money: 0 };
+      return `<td class="num"><div class="wp ${x.win === bestWin && x.win > 0 ? 'fav' : ''}"><b>${pctTxt(x.win)}</b>${bar(x.win)}</div></td><td class="num hide-sm muted">${pctTxt(x.money)}</td>`;
+    };
+    const standings = `<div class="card"><div class="table-wrap"><table class="standings ${wp ? 'has-wp' : ''}">
+      <thead><tr><th>Pos</th><th>Manager</th><th class="num">To par</th>${wp ? `<th class="num">Win chance</th><th class="num hide-sm">Top ${wp.paid}</th>` : ''}<th class="num ${wp ? 'hide-sm' : ''}">Strokes</th><th class="num hide-sm">Pick</th></tr></thead><tbody>
       ${lb.teams.map((t) => `<tr class="${t.rank === 1 ? 'first' : ''}"><td class="rank">${t.rank}</td><td class="mgr">${mgrDot(draft, t.managerId)}<a href="#" class="jump" data-team="${esc(t.managerId)}">${esc(t.manager)}</a>${t.tiedOnScore && started ? ` <button type="button" class="tb-chip" data-tb="${esc(t.managerId)}">Tiebreaker</button>` : ''}</td>
-        <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td><td class="num">${t.strokes || '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
-      </tbody></table></div></div>
+        <td class="num score ${parCls(t.toPar)}">${esc(t.toParDisplay)}</td>${wpCells(t)}<td class="num ${wp ? 'hide-sm' : ''}">${t.strokes || '-'}</td><td class="num hide-sm muted">${t.draftPos}</td></tr>`).join('')}
+      </tbody></table></div>
+      ${wp ? `<p class="wp-note">Win chance: the rest of the tournament played out ${wp.sims.toLocaleString()} times from live scores, including who misses the cut and takes ${lb.settings.penalty}s.<span class="hide-sm"> Top ${wp.paid} is the chance of finishing in the money.</span> Every golfer is treated as equally good from here, so it sharpens as the week goes on.</p>` : ''}</div>
 `;
     // Only while the cut is still in play. Once it is decided this drops off and the Cut tab has the result.
     const cutStrip = cut?.available && !cut.final && cut.lines?.length

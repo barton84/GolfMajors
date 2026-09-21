@@ -354,3 +354,37 @@ tr.owned td:first-child { box-shadow: inset 4px 0 0 var(--c); }
 .restore-mode:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .restore-mode.danger:has(input:checked) { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, transparent); }
 @media (max-width: 520px) { .restore-counts { grid-template-columns: repeat(2, 1fr); } }
+
+/* Win chance on the Leaderboard */
+.wp { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.wp b { min-width: 38px; text-align: right; }
+.wp .probbar { width: 70px; }
+.wp.fav b { color: var(--good); }
+.wp-note { margin: 0; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) {
+  .standings .hide-sm, .wp-note .hide-sm { display: none; }
+  .wp .probbar { width: 44px; }
+}
+
+/* Draft Room watchlist */
+.seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { flex: 1; font: inherit; font-size: 13px; font-weight: 600; padding: 7px 10px; background: var(--card); color: var(--muted); border: 0; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent-soft); color: var(--ink); }
+.star { font-size: 18px; line-height: 1; width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 6px; padding: 0; }
+.star:hover { background: var(--bg-2); }
+.star.on { color: var(--accent); }
+[data-theme='golf'] .star.on { color: #b8900f; }
+.watch-row .wrank { width: 2ch; text-align: right; font-weight: 700; color: var(--muted); font-size: 13px; flex: none; }
+.watch-row.gone .nm { text-decoration: line-through; color: var(--muted); font-weight: 500; }
+.reorder { display: flex; flex-direction: column; gap: 1px; flex: none; }
+.reorder button { font-size: 9px; line-height: 1; width: 22px; height: 14px; padding: 0; border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 3px; cursor: pointer; }
+.reorder button:disabled { opacity: .3; cursor: default; }
+.clock .quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.clock .quick .small { opacity: .85; }
+.clock.me .quick .btn.accent { background: #17140a; border-color: #17140a; color: #fff; }
+@media (max-width: 640px) {
+  .reorder { flex-direction: row; gap: 4px; }
+  .reorder button { width: 30px; height: 30px; font-size: 11px; border-radius: 6px; }
+  .star { width: 32px; height: 32px; font-size: 20px; }
+}
